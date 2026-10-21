@@ -1,0 +1,10 @@
+[93mFLAGS[0m
+  -env string
+    	Environment to write to (default "global")
+
+[93mARGUMENTS[0m
+  <KEY>      - Key name (required)
+  <VALUE>    - Key value (required)
+
+[93mLEARN MORE[0m
+  Use `hulak <command> --help` for more information about a command.
