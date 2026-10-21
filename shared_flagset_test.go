@@ -25,21 +25,25 @@ func TestReviewAASharedFlagSetStillHonoursHelp(t *testing.T) {
 }
 
 func TestReviewAAHelpRequestDoesNotCarryOver(t *testing.T) {
-	ran := false
-	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	fs.String("out", "", "Out path")
-	var out bytes.Buffer
-	root := &Command{Name: "app", Config: &Config{Out: &out}, SubCommands: []*Command{
-		{Name: "run", Flags: fs, Run: func([]string) error { ran = true; return nil }},
-	}}
-	if err := root.Execute([]string{"run", "--out", "x", "--help"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := root.Execute([]string{"run", "--out", "y"}); err != nil {
-		t.Fatal(err)
-	}
-	if !ran {
-		t.Error("the earlier --help still counted on the next Execute")
+	for _, helpArg := range []string{"--help", "-h"} {
+		t.Run(helpArg, func(t *testing.T) {
+			ran := false
+			fs := flag.NewFlagSet("run", flag.ContinueOnError)
+			fs.String("out", "", "Out path")
+			var out bytes.Buffer
+			root := &Command{Name: "app", Config: &Config{Out: &out}, SubCommands: []*Command{
+				{Name: "run", Flags: fs, Run: func([]string) error { ran = true; return nil }},
+			}}
+			if err := root.Execute([]string{"run", "--out", "x", helpArg}); err != nil {
+				t.Fatal(err)
+			}
+			if err := root.Execute([]string{"run", "--out", "y"}); err != nil {
+				t.Fatal(err)
+			}
+			if !ran {
+				t.Errorf("the earlier %s still counted on the next Execute", helpArg)
+			}
+		})
 	}
 }
 

@@ -23,6 +23,9 @@ func TestReviewABOnlyExactHelpArgumentsAreHelp(t *testing.T) {
 		{"---help", "h", false},
 		{"--h", "h", false},
 		{"-help", "h", false},
+		{"--help=false", "h", false},
+		{"--helpx", "h", false},
+		{"HELP", "h", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.arg+"/short="+tc.short, func(t *testing.T) {
@@ -85,5 +88,19 @@ func TestReviewABHelpWordAtEveryLevel(t *testing.T) {
 		if ran || !strings.Contains(out.String(), "LEARN MORE") {
 			t.Errorf("%v: ran=%v, want help", args, ran)
 		}
+	}
+}
+
+func TestReviewAIHelpFalseRunsTheCommand(t *testing.T) {
+	ran := false
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	root := &Command{Name: "app", Config: &Config{Out: &bytes.Buffer{}}, SubCommands: []*Command{
+		{Name: "run", Flags: fs, Run: func([]string) error { ran = true; return nil }},
+	}}
+	if err := root.Execute([]string{"run", "--help=false"}); err != nil {
+		t.Fatal(err)
+	}
+	if !ran {
+		t.Error("--help=false should run the command")
 	}
 }
