@@ -138,7 +138,6 @@ func WriteBashCompletion(out io.Writer, root *Command) error {
 	p("")
 	p("%s_empty_after() {", fn)
 	p("  local line=$COMP_LINE k")
-	p("  [[ -n $line ]] || return 1")
 	p("  for (( k = 0; k <= $1; k++ )); do")
 	p("    line=${line#\"${line%%%%[![:space:]]*}\"}")
 	p("    [[ $line == \"${COMP_WORDS[k]}\"* ]] || return 1")
@@ -170,7 +169,7 @@ func WriteBashCompletion(out io.Writer, root *Command) error {
 	p("    if [[ -z $w ]]; then ((i++)); continue; fi")
 	p("    if [[ $w == -- ]]; then dashes=1; break; fi")
 	p("    if [[ $w == -?* ]]; then")
-	p("      if [[ ${COMP_WORDS[i+1]} == = ]]; then")
+	p("      if [[ ${COMP_WORDS[i+1]} == =* ]]; then")
 	p("        if %s_empty_after $((i+1)); then ((i+=2)); else ((i+=3)); fi", fn)
 	p("        continue")
 	p("      fi")
@@ -184,7 +183,7 @@ func WriteBashCompletion(out io.Writer, root *Command) error {
 	if len(flagsFirstChains(root, []string{name})) > 0 {
 		p("  if (( ! path )) && %s_flags_first \"$chain\"; then %s_after_dashes \"$chain\" \"$cur\"; return; fi", fn, fn)
 	}
-	p("  [[ $prev == = ]] && prev=${COMP_WORDS[COMP_CWORD-2]}")
+	p("  [[ $prev == =* ]] && ! %s_empty_after $((COMP_CWORD-1)) && prev=${COMP_WORDS[COMP_CWORD-2]}", fn)
 	p("  if %s_takes_value \"$prev\"; then %s_complete_value \"$prev\" \"$cur\"; return; fi", fn, fn)
 	p("  case \"$chain\" in")
 	bashEmitCases(p, cfg, fn, root, []string{name})
