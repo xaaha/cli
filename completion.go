@@ -181,8 +181,14 @@ func validateTree(cfg *Config, root *Command) (map[string]bool, error) {
 		if kind == "" {
 			return nil
 		}
-		if _, ok := cfg.Completers[kind]; !ok && kind != KindFile && kind != KindDir {
-			return fmt.Errorf("%s uses unknown completer %q", where, kind)
+		if kind != KindFile && kind != KindDir {
+			c, ok := cfg.Completers[kind]
+			if !ok {
+				return fmt.Errorf("%s uses unknown completer %q", where, kind)
+			}
+			if c.Zsh == "" || c.Bash == nil {
+				return fmt.Errorf("%s: completer %q needs Zsh and Bash", where, kind)
+			}
 		}
 		used[kind] = true
 		return nil
