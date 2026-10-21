@@ -11,7 +11,7 @@ func TestReviewASDoubleDashStopsSubcommandDispatch(t *testing.T) {
 	var rootArgs []string
 	statusRan := false
 	root := &Command{Name: "app", Config: &Config{Out: io.Discard},
-		Run: func(args []string) error { rootArgs = args; return nil },
+		Run:         func(args []string) error { rootArgs = args; return nil },
 		SubCommands: []*Command{{Name: "status", Run: func([]string) error { statusRan = true; return nil }}},
 	}
 	for _, args := range [][]string{{"--", "status"}, {"--", "x", "status"}} {
