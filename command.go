@@ -38,6 +38,7 @@ type ArgDef struct {
 }
 
 // Execute dispatches args to the correct subcommand or runs this command.
+// Flag values persist after a call, so build a fresh tree for each run.
 func (cmd *Command) Execute(args []string) error {
 	if cmd.parent == nil {
 		cmd.link()
