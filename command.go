@@ -20,7 +20,7 @@ type Command struct {
 	Long        string                    // detailed help shown with --help
 	Hidden      bool                      // omit from help listings (still callable)
 	Examples    []Example                 // usage examples shown under EXAMPLES
-	Flags       *flag.FlagSet             // scoped flags for this command
+	Flags       *flag.FlagSet             // parsed when this command runs; flags before a subcommand go to it
 	Args        []ArgDef                  // positional arguments, for help and completion
 	SubCommands []*Command                // nested subcommands
 	Run         func(args []string) error // handler; nil means subcommand-only
@@ -31,7 +31,7 @@ type Command struct {
 
 // ArgDef describes a positional argument for help output and completion.
 // Kind selects the value completer: KindFile, KindDir, a key of
-// Config.Completers, or "" for none.
+// Config.Completers, or "" for none. Only the first ArgDef's Kind is used.
 type ArgDef struct {
 	Name     string
 	Required bool
@@ -228,7 +228,8 @@ func (cmd *Command) VisibleSubs() []*Command {
 }
 
 // FlagPairings returns a short->long map for flags where both forms are
-// registered on fs. Help and completion use it to show `-o, --out` on one line.
+// registered on fs and both come from the app or both were added by linking.
+// Help and completion use it to show `-o, --out` on one line.
 func (c *Config) FlagPairings(fs *flag.FlagSet) map[string]string {
 	out := make(map[string]string)
 	for long, short := range c.FlagAliases {
@@ -240,8 +241,8 @@ func (c *Config) FlagPairings(fs *flag.FlagSet) map[string]string {
 }
 
 // VisitVisibleFlags calls fn for each visible flag on fs — that is, every
-// flag except hidden ones and long-form aliases whose short partner is also
-// registered (the short form pulls the long form in via FlagPairings).
+// flag except hidden ones and long-form aliases paired by FlagPairings (the
+// short form pulls the long form in).
 // Same iteration order as flag.FlagSet.VisitAll (alphabetical by name).
 func (c *Config) VisitVisibleFlags(fs *flag.FlagSet, fn func(*flag.Flag)) {
 	fs.VisitAll(func(f *flag.Flag) {
@@ -264,6 +265,7 @@ func (c *Config) VisitVisibleFlags(fs *flag.FlagSet, fn func(*flag.Flag)) {
 //   - `--name=value` inlines the value — the next arg is not consumed.
 //   - Bool flags (per the flag.Value IsBoolFlag contract) take no value.
 //   - Anything else is assumed to consume the next arg as its value.
+//   - "--" ends the scan with no match; a lone "-" is a positional.
 //
 // This is the dispatch-level analogue of the iterative flag-anywhere parsing
 // in Execute: ordering between flags and the verb is not significant.
@@ -301,8 +303,8 @@ func (cmd *Command) FindSubcommandIndex(args []string) (matchIdx, firstNonFlag i
 }
 
 // PrintHelp prints the command's help to Config.Out in a style similar to gh CLI.
-// A subcommand reads the root's Config, and lists help flags, once Execute or
-// a completion writer has linked the tree; before that it acts as its own root.
+// A subcommand reads the root's Config once Execute or a completion writer has
+// linked the tree; before that it acts as its own root.
 func (cmd *Command) PrintHelp() {
 	cfg := cmd.EffectiveConfig()
 	w := cfg.Out

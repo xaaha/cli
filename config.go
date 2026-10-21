@@ -36,7 +36,7 @@ type Config struct {
 type ColorMode int
 
 const (
-	// ColorAuto colours only when Out is a terminal and NO_COLOR is unset.
+	// ColorAuto colours only when Out is a terminal and NO_COLOR is unset or empty.
 	ColorAuto ColorMode = iota
 	// ColorAlways colours regardless of the writer.
 	ColorAlways
