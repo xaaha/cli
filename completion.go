@@ -33,7 +33,9 @@ type Completer struct {
 // It links the tree first, as Execute does.
 func WriteZshCompletion(out io.Writer, root *Command) error {
 	w := &errWriter{w: out}
-	root.link()
+	if err := root.link(); err != nil {
+		return err
+	}
 	cfg := root.EffectiveConfig()
 	if _, err := validateTree(cfg, root); err != nil {
 		return err
@@ -71,7 +73,9 @@ func WriteZshCompletion(out io.Writer, root *Command) error {
 // taking a value everywhere.
 func WriteBashCompletion(out io.Writer, root *Command) error {
 	w := &errWriter{w: out}
-	root.link()
+	if err := root.link(); err != nil {
+		return err
+	}
 	cfg := root.EffectiveConfig()
 	used, err := validateTree(cfg, root)
 	if err != nil {

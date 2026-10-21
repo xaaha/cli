@@ -43,28 +43,40 @@ type ArgDef struct {
 // Flag values persist after a call, so build a fresh tree for each run.
 func (cmd *Command) Execute(args []string) error {
 	if cmd.parent == nil {
-		cmd.link()
+		if err := cmd.link(); err != nil {
+			return err
+		}
 	}
 	return cmd.execute(args)
 }
 
-func (cmd *Command) link() {
-	cmd.addHelpFlags()
+func (cmd *Command) link() error {
+	if err := cmd.addHelpFlags(); err != nil {
+		return err
+	}
 	for _, sub := range cmd.SubCommands {
 		sub.parent = cmd
-		sub.link()
+		if err := sub.link(); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func (cmd *Command) addHelpFlags() {
-	if cmd.Flags == nil {
-		return
+func (cmd *Command) addHelpFlags() error {
+	short := cmd.EffectiveConfig().FlagAliases["help"]
+	if short != "" && !shellSafeName.MatchString(short) {
+		return fmt.Errorf("FlagAliases[\"help\"] = %q is not a valid flag name", short)
 	}
-	for _, name := range []string{"help", cmd.EffectiveConfig().FlagAliases["help"]} {
+	if cmd.Flags == nil {
+		return nil
+	}
+	for _, name := range []string{"help", short} {
 		if name != "" && cmd.Flags.Lookup(name) == nil {
 			cmd.Flags.Var(&helpFlag{}, name, "Show help for this command")
 		}
 	}
+	return nil
 }
 
 func (cmd *Command) execute(args []string) error {
