@@ -320,7 +320,7 @@ func TestPrintHelpIncludesExamples(t *testing.T) {
 	cmd := &Command{
 		Name: "gql",
 		Long: "GraphQL explorer",
-		Examples: []*CommandHelp{
+		Examples: []Example{
 			{Command: "hulak gql .", Description: "All files in current dir"},
 		},
 	}

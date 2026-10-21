@@ -58,7 +58,7 @@ type Command struct {
 	Short       string                    // one-line description for parent's help listing
 	Long        string                    // detailed help shown with --help
 	Hidden      bool                      // omit from help listings (still callable)
-	Examples    []*CommandHelp            // usage examples (printed via WriteCommandHelp)
+	Examples    []Example                 // usage examples shown under EXAMPLES
 	Flags       *flag.FlagSet             // scoped flags for this command
 	Args        []ArgDef                  // positional arg descriptions (for help only)
 	SubCommands []*Command                // nested subcommands
@@ -258,14 +258,14 @@ func (cmd *Command) PrintHelp() {
 	}
 
 	if subs := cmd.VisibleSubs(); len(subs) > 0 {
-		PrintSectionHeader("COMMANDS")
-		var entries []*CommandHelp
+		printSectionHeader("COMMANDS")
+		var entries []*helpEntry
 		for _, sub := range subs {
 			name := sub.Name
 			if len(sub.Aliases) > 0 {
 				name += " (" + strings.Join(sub.Aliases, ", ") + ")"
 			}
-			entries = append(entries, &CommandHelp{
+			entries = append(entries, &helpEntry{
 				Command:     name,
 				Description: sub.Short,
 			})
@@ -273,10 +273,10 @@ func (cmd *Command) PrintHelp() {
 		// Alphabetical so users can scan; registration order is meaningless
 		// to readers. Sort by primary name (everything before the first
 		// space, i.e. before the "(alias)" suffix).
-		slices.SortFunc(entries, func(a, b *CommandHelp) int {
+		slices.SortFunc(entries, func(a, b *helpEntry) int {
 			return strings.Compare(primaryName(a.Command), primaryName(b.Command))
 		})
-		_ = WriteCommandHelp(entries)
+		_ = writeHelpEntries(entries)
 		fmt.Println()
 	}
 
@@ -285,25 +285,25 @@ func (cmd *Command) PrintHelp() {
 	}
 
 	if len(cmd.Args) > 0 {
-		PrintSectionHeader("ARGUMENTS")
-		var entries []*CommandHelp
+		printSectionHeader("ARGUMENTS")
+		var entries []*helpEntry
 		for _, a := range cmd.Args {
 			name := "<" + a.Name + ">"
 			desc := a.Desc
 			if a.Required {
 				desc += " (required)"
 			}
-			entries = append(entries, &CommandHelp{
+			entries = append(entries, &helpEntry{
 				Command:     name,
 				Description: desc,
 			})
 		}
-		_ = WriteCommandHelp(entries)
+		_ = writeHelpEntries(entries)
 		fmt.Println()
 	}
 
 	if len(cmd.Examples) > 0 {
-		PrintSectionHeader("EXAMPLES")
+		printSectionHeader("EXAMPLES")
 		for _, ex := range cmd.Examples {
 			fmt.Printf("  $ %s\n", ex.Command)
 			fmt.Printf("    %s\n", ex.Description)
@@ -311,7 +311,7 @@ func (cmd *Command) PrintHelp() {
 		fmt.Println()
 	}
 
-	PrintSectionHeader("LEARN MORE")
+	printSectionHeader("LEARN MORE")
 	fmt.Println("  Use `hulak <command> --help` for more information about a command.")
 }
 
@@ -326,7 +326,7 @@ func printFlags(fs *flag.FlagSet) {
 		return
 	}
 
-	PrintSectionHeader("FLAGS")
+	printSectionHeader("FLAGS")
 	VisitVisibleFlags(fs, func(f *flag.Flag) {
 		// Build flag name: "-fp, --file-path" or just "-debug"
 		label := "  -" + f.Name

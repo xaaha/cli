@@ -41,7 +41,7 @@ func fixtureTree() *Command {
 				Long:  "Run one request file or every request file in a directory.",
 				Flags: runFlags,
 				Args:  []ArgDef{{Name: "path", Required: true, Desc: "File or directory", Kind: "yaml"}},
-				Examples: []*CommandHelp{
+				Examples: []Example{
 					{Command: "hulak run api/users.hk.yaml", Description: "Run one file"},
 				},
 				Run: noop,

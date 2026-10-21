@@ -7,25 +7,26 @@ import (
 )
 
 const (
-	Yellow     = "\033[93m"
-	ColorReset = "\033[0m"
+	colorYellow = "\033[93m"
+	colorReset  = "\033[0m"
 )
 
-// PrintSectionHeader prints a yellow section header to stdout. Use for help
-// text headings ("COMMANDS", "FLAGS", etc.) — not for warnings. Stays on
-// stdout because help output is the program's actual output, not diagnostics.
-func PrintSectionHeader(msg string) {
-	fmt.Printf("%s%s%s\n", Yellow, msg, ColorReset)
-}
-
-// CommandHelp holds a command and its description
-type CommandHelp struct {
+// Example is one usage example shown in a command's help.
+type Example struct {
 	Command     string
 	Description string
 }
 
-// CommandHelp holds a command and its description
-func WriteCommandHelp(commands []*CommandHelp) error {
+func printSectionHeader(msg string) {
+	fmt.Printf("%s%s%s\n", colorYellow, msg, colorReset)
+}
+
+type helpEntry struct {
+	Command     string
+	Description string
+}
+
+func writeHelpEntries(commands []*helpEntry) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 4, ' ', 0)
 	for _, cmd := range commands {
 		if _, err := fmt.Fprintf(w, "  %s\t- %s\n", cmd.Command, cmd.Description); err != nil {
