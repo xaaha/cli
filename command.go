@@ -370,8 +370,13 @@ func (cmd *Command) isHelpArg(arg string) bool {
 	if arg == "help" {
 		return true
 	}
-	name := strings.TrimLeft(arg, "-")
-	if name == arg || (name != "help" && name != cmd.EffectiveConfig().FlagAliases["help"]) {
+	var name string
+	switch short := cmd.EffectiveConfig().FlagAliases["help"]; {
+	case arg == "--help":
+		name = "help"
+	case short != "" && arg == "-"+short:
+		name = short
+	default:
 		return false
 	}
 	return cmd.Flags == nil || injected(cmd.Flags, name)
