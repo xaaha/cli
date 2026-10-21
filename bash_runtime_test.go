@@ -54,6 +54,7 @@ printf '%s\n' "${COMPREPLY[@]}" | sort | tr '\n' ' '
 		{"flag value completer", []string{"hulak", "run", "--out", "no"}, "notes.txt "},
 		{"--flag=value before a subcommand", []string{"hulak", "--env", "=", "prod", "secrets", ""}, "keys list "},
 		{"value after --flag=", []string{"hulak", "run", "--out", "=", "no"}, "notes.txt "},
+		{"-- after a positional still counts", []string{"hulak", "run", "x", "--", "-"}, " "},
 		{"after -- the root completes nothing", []string{"hulak", "--", "secrets", ""}, " "},
 		{"after -- only the command's positional completer runs", []string{"hulak", "run", "--", ""}, "a.yaml sub "},
 		{"after -- a flag-looking word takes no value", []string{"hulak", "run", "--", "--out", ""}, "a.yaml sub "},
