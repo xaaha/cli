@@ -379,3 +379,36 @@ func TestBashIgnoresZshNameCollisions(t *testing.T) {
 		t.Errorf("bash has no per-command functions: %v", err)
 	}
 }
+
+func TestBashEvalInstallWorksInEveryBash(t *testing.T) {
+	bins := []string{shellPath(t, "bash")}
+	if info, err := os.Stat("/bin/bash"); err == nil && !info.IsDir() && bins[0] != "/bin/bash" {
+		bins = append(bins, "/bin/bash")
+	}
+	root := &Command{Name: "app", SubCommands: []*Command{{Name: "greet", Short: "Say hello", Run: func([]string) error { return nil }}}}
+	var script bytes.Buffer
+	if err := WriteBashCompletion(&script, root); err != nil {
+		t.Fatal(err)
+	}
+	scriptPath := filepath.Join(t.TempDir(), "app.bash")
+	if err := os.WriteFile(scriptPath, script.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	harness := `
+eval "$(cat "$1")"
+complete -p app || exit 1
+COMP_WORDS=(app g)
+COMP_CWORD=1
+_app
+printf '%s\n' "${COMPREPLY[@]}"
+`
+	for _, bin := range bins {
+		out, err := exec.Command(bin, "--norc", "-c", harness, "_", scriptPath).CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s: %v\n%s", bin, err, out)
+		}
+		if !strings.Contains(string(out), "complete -F _app app") || !strings.HasSuffix(string(out), "\ngreet\n") {
+			t.Errorf("%s: eval install did not register a working completion:\n%s", bin, out)
+		}
+	}
+}

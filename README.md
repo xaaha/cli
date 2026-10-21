@@ -313,8 +313,11 @@ Or load it on every start, after `compinit`, with
 Load it on every start by adding this line to `~/.bashrc`:
 
 ```sh
-source <(app completion bash)
+eval "$(app completion bash)"
 ```
+
+This works in the bash 3.2 that macOS ships as `/bin/bash` and in newer
+versions. `source <(app completion bash)` does nothing in bash 3.2.
 
 Or, with the bash-completion package installed, write it where that package
 looks for completions:
