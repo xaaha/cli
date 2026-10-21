@@ -41,7 +41,7 @@ func executeOutput(t *testing.T, args ...string) string {
 	return out
 }
 
-func TestD9GoldenOutput(t *testing.T) {
+func TestGoldenOutput(t *testing.T) {
 	cases := []struct {
 		name string
 		got  func(t *testing.T) string
