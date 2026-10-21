@@ -17,14 +17,14 @@ import (
 func TestCompletionScripts(t *testing.T) {
 	type shell struct {
 		name string
-		gen  func(*bytes.Buffer)
+		gen  func(*bytes.Buffer) error
 		want []string
 		deny []string
 	}
 	shells := []shell{
 		{
 			name: "zsh",
-			gen:  func(b *bytes.Buffer) { generateZshCompletion(b, fixtureTree()) },
+			gen:  func(b *bytes.Buffer) error { return WriteZshCompletion(b, fixtureTree()) },
 			want: []string{
 				"#compdef hulak",
 				"compdef _hulak hulak",
@@ -54,7 +54,7 @@ func TestCompletionScripts(t *testing.T) {
 		},
 		{
 			name: "bash",
-			gen:  func(b *bytes.Buffer) { generateBashCompletion(b, fixtureTree()) },
+			gen:  func(b *bytes.Buffer) error { return WriteBashCompletion(b, fixtureTree()) },
 			want: []string{
 				"complete -F _hulak hulak",
 				"_hulak_envs()",
@@ -92,7 +92,9 @@ func TestCompletionScripts(t *testing.T) {
 	for _, sh := range shells {
 		t.Run(sh.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			sh.gen(&buf)
+			if err := sh.gen(&buf); err != nil {
+				t.Fatal(err)
+			}
 			out := buf.String()
 			for _, want := range sh.want {
 				if !strings.Contains(out, want) {
@@ -120,7 +122,9 @@ func TestCompletionScripts(t *testing.T) {
 // those would either mangle or execute at tab time.
 func TestBashCompgenPayloadsAreSafe(t *testing.T) {
 	var buf bytes.Buffer
-	generateBashCompletion(&buf, fixtureTree())
+	if err := WriteBashCompletion(&buf, fixtureTree()); err != nil {
+		t.Fatal(err)
+	}
 
 	for i, line := range strings.Split(buf.String(), "\n") {
 		idx := strings.Index(line, `compgen -W "`)
@@ -154,7 +158,9 @@ func TestBashChainWalker(t *testing.T) {
 	}
 
 	var script bytes.Buffer
-	generateBashCompletion(&script, fixtureTree())
+	if err := WriteBashCompletion(&script, fixtureTree()); err != nil {
+		t.Fatal(err)
+	}
 
 	dir := t.TempDir()
 	scriptPath := filepath.Join(dir, "hulak.bash")

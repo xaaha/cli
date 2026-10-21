@@ -9,6 +9,128 @@ import (
 	"strings"
 )
 
+// Built-in completion kinds for ArgDef.Kind and Config.FlagCompleters.
+const (
+	KindFile = "file"
+	KindDir  = "dir"
+)
+
+// Completer completes a value of one named kind in both shells.
+type Completer struct {
+	// Label describes the value in zsh, e.g. "environment".
+	Label string
+	// Zsh is the zsh action, e.g. `_files -g "*.yaml"` or a function name.
+	Zsh string
+	// Bash returns a bash command that fills COMPREPLY for the quoted word.
+	Bash func(word string) string
+	// ZshFuncs and BashFuncs hold helper function definitions the actions call.
+	ZshFuncs  string
+	BashFuncs string
+}
+
+// WriteZshCompletion writes a zsh completion script for the tree under root.
+func WriteZshCompletion(w io.Writer, root *Command) error {
+	cfg := root.EffectiveConfig()
+	if _, err := usedKinds(cfg, root); err != nil {
+		return err
+	}
+	name := root.Name
+	fn := "_" + shellFn(name)
+	p := func(format string, a ...any) { fmt.Fprintf(w, format+"\n", a...) }
+	p("#compdef %s", name)
+	p("# Generated code. Do not edit by hand.")
+	p("")
+	emitZshCmd(p, cfg, root, fn)
+	for _, kind := range sortedKeys(registered(cfg)) {
+		if funcs := cfg.Completers[kind].ZshFuncs; funcs != "" {
+			fmt.Fprintln(w, funcs)
+			p("")
+		}
+	}
+	p("compdef %s %s", fn, name)
+	return nil
+}
+
+// WriteBashCompletion writes a bash completion script for the tree under root.
+func WriteBashCompletion(w io.Writer, root *Command) error {
+	cfg := root.EffectiveConfig()
+	used, err := usedKinds(cfg, root)
+	if err != nil {
+		return err
+	}
+	name := root.Name
+	fn := "_" + shellFn(name)
+	p := func(format string, a ...any) { fmt.Fprintf(w, format+"\n", a...) }
+	ctx := collectBashCtx(cfg, root)
+
+	p("# bash completion for %s", name)
+	p("# Generated code. Do not edit by hand.")
+	p("")
+	if used[KindFile] {
+		// Path completion that handles filenames with spaces: read compgen
+		// output one line at a time instead of word-splitting on $(...).
+		// `compopt -o filenames` asks bash to quote and append slashes correctly.
+		emitBashReader(p, fn+"_path_files", "-f")
+	}
+	if used[KindDir] {
+		emitBashReader(p, fn+"_dir_files", "-d")
+	}
+	for _, kind := range sortedKeys(registered(cfg)) {
+		if funcs := cfg.Completers[kind].BashFuncs; funcs != "" {
+			fmt.Fprintln(w, funcs)
+			p("")
+		}
+	}
+	p("%s_takes_value() {", fn)
+	p("  case \"$1\" in")
+	p("    %s) return 0 ;;", strings.Join(sortedKeys(ctx.valueFlags), "|"))
+	p("  esac")
+	p("  return 1")
+	p("}")
+	p("")
+	p("%s_complete_value() {", fn)
+	p("  case \"$1\" in")
+	kinds := make([]string, 0, len(ctx.kindFlags))
+	for kind := range ctx.kindFlags {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+	for _, kind := range kinds {
+		p("    %s) %s ;;", strings.Join(sortedKeys(ctx.kindFlags[kind]), "|"), bashComplete(cfg, fn, kind, `"$2"`))
+	}
+	p("    *) COMPREPLY=() ;;")
+	p("  esac")
+	p("}")
+	p("")
+	p("%s_is_path() {", fn)
+	p("  case \"$1\" in")
+	p("    %s) return 0 ;;", strings.Join(ctx.validPaths, "|"))
+	p("  esac")
+	p("  return 1")
+	p("}")
+	p("")
+	p("%s() {", fn)
+	p("  local cur=\"${COMP_WORDS[COMP_CWORD]}\" prev=\"${COMP_WORDS[COMP_CWORD-1]}\" chain=%s i=1", name)
+	p("  if %s_takes_value \"$prev\"; then %s_complete_value \"$prev\" \"$cur\"; return; fi", fn, fn)
+	p("  while (( i < COMP_CWORD )); do")
+	p("    local w=\"${COMP_WORDS[i]}\"")
+	p("    if [[ -z $w ]]; then ((i++)); continue; fi")
+	p("    if [[ $w == -* ]]; then")
+	p("      %s_takes_value \"$w\" && ((i++))", fn)
+	p("      ((i++)); continue")
+	p("    fi")
+	p("    if %s_is_path \"$chain:$w\"; then chain+=:$w; ((i++)); else break; fi", fn)
+	p("  done")
+	p("  case \"$chain\" in")
+	bashEmitCases(p, cfg, fn, root, []string{name})
+	p("    *) COMPREPLY=() ;;")
+	p("  esac")
+	p("}")
+	p("")
+	p("complete -F %s %s", fn, name)
+	return nil
+}
+
 // --- shared helpers ---
 
 func allNames(cmd *Command) []string {
@@ -22,8 +144,8 @@ func dashed(name string) string {
 	return "--" + name
 }
 
-// argKind returns the completion kind for the first positional ("yaml",
-// "file", or "" for none). Commands with no Args have nothing to complete.
+// argKind returns the completion kind for the first positional, or "" for
+// none. Commands with no Args have nothing to complete.
 func argKind(cmd *Command) string {
 	if len(cmd.Args) == 0 {
 		return ""
@@ -31,25 +153,61 @@ func argKind(cmd *Command) string {
 	return cmd.Args[0].Kind
 }
 
-func zshFn(name string) string { return strings.ReplaceAll(name, "-", "_") }
+func shellFn(name string) string { return strings.ReplaceAll(name, "-", "_") }
+
+func registered(cfg *Config) map[string]bool {
+	out := make(map[string]bool, len(cfg.Completers))
+	for kind := range cfg.Completers {
+		out[kind] = true
+	}
+	return out
+}
+
+// usedKinds returns every completion kind the tree refers to, and fails on a
+// kind that is neither built in nor registered in cfg.Completers.
+func usedKinds(cfg *Config, root *Command) (map[string]bool, error) {
+	used := map[string]bool{}
+	check := func(kind, where string) error {
+		if kind == "" {
+			return nil
+		}
+		if _, ok := cfg.Completers[kind]; !ok && kind != KindFile && kind != KindDir {
+			return fmt.Errorf("%s uses unknown completer %q", where, kind)
+		}
+		used[kind] = true
+		return nil
+	}
+	var walk func(cmd *Command, path string) error
+	walk = func(cmd *Command, path string) error {
+		if err := check(argKind(cmd), path); err != nil {
+			return err
+		}
+		if cmd.Flags != nil {
+			var err error
+			cmd.Flags.VisitAll(func(f *flag.Flag) {
+				if err == nil && !cfg.HiddenFlags[f.Name] && !isBoolFlag(f) {
+					err = check(cfg.FlagCompleters[f.Name], path+" "+dashed(f.Name))
+				}
+			})
+			if err != nil {
+				return err
+			}
+		}
+		for _, sub := range cmd.VisibleSubs() {
+			if err := walk(sub, path+" "+sub.Name); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return used, walk(root, root.Name)
+}
+
+func isBoolFlag(f *flag.Flag) bool {
+	return f.DefValue == "true" || f.DefValue == "false"
+}
 
 // --- zsh ---
-
-func generateZshCompletion(w io.Writer, root *Command) {
-	p := func(format string, a ...any) { fmt.Fprintf(w, format+"\n", a...) }
-	cfg := root.EffectiveConfig()
-	p("#compdef hulak")
-	p("# Generated by 'hulak gendocs' — do not edit by hand.")
-	p("")
-	emitZshCmd(p, cfg, root, "_hulak")
-	p("_hulak_envs() {")
-	p("  [[ -d env ]] || return")
-	p("  local -a envs=(${(f)\"$(cd env && for f in *.env(N); do print -- \"${f%%.env}\"; done)\"})")
-	p("  (( ${#envs} )) && _describe -t envs 'environment' envs")
-	p("}")
-	p("")
-	p("compdef _hulak hulak")
-}
 
 // emitZshCmd writes the completer for cmd and recurses into its visible
 // subcommands. Function name carries the path (e.g. _hulak_secrets_set).
@@ -59,7 +217,7 @@ func emitZshCmd(p func(string, ...any), cfg *Config, cmd *Command, fn string) {
 	specs := zshFlagSpecs(cfg, cmd)
 
 	if len(subs) == 0 {
-		if pos := zshPositionalSpec(cmd); pos != "" {
+		if pos := zshPositionalSpec(cfg, cmd); pos != "" {
 			specs = append(specs, pos)
 		}
 		if len(specs) == 0 {
@@ -96,7 +254,7 @@ func emitZshCmd(p func(string, ...any), cfg *Config, cmd *Command, fn string) {
 		p("    '*::arg:->args' && ret=0")
 		p("  [[ $state == args ]] && case $words[1] in")
 		for _, sub := range dispatchSubs {
-			p("    %s) %s_%s && ret=0 ;;", strings.Join(allNames(sub), "|"), fn, zshFn(sub.Name))
+			p("    %s) %s_%s && ret=0 ;;", strings.Join(allNames(sub), "|"), fn, shellFn(sub.Name))
 		}
 		p("  esac")
 		p("  return ret")
@@ -117,7 +275,7 @@ func emitZshCmd(p func(string, ...any), cfg *Config, cmd *Command, fn string) {
 	p("")
 
 	for _, sub := range subs {
-		emitZshCmd(p, cfg, sub, fn+"_"+zshFn(sub.Name))
+		emitZshCmd(p, cfg, sub, fn+"_"+shellFn(sub.Name))
 	}
 }
 
@@ -127,7 +285,7 @@ func zshSubHasCompleter(cfg *Config, sub *Command) bool {
 	if len(sub.VisibleSubs()) > 0 {
 		return true
 	}
-	return len(zshFlagSpecs(cfg, sub)) > 0 || zshPositionalSpec(sub) != ""
+	return len(zshFlagSpecs(cfg, sub)) > 0 || zshPositionalSpec(cfg, sub) != ""
 }
 
 func emitZshArgs(p func(string, ...any), fn string, specs []string) {
@@ -144,14 +302,18 @@ func emitZshArgs(p func(string, ...any), fn string, specs []string) {
 	p("")
 }
 
-func zshPositionalSpec(cmd *Command) string {
-	switch argKind(cmd) {
-	case "yaml":
-		return `'*:file or directory:_files -g "*.(yaml|yml|hk.yaml|hk.yml)"'`
-	case "file":
+func zshPositionalSpec(cfg *Config, cmd *Command) string {
+	switch kind := argKind(cmd); kind {
+	case "":
+		return ""
+	case KindFile:
 		return "'*:file:_files'"
+	case KindDir:
+		return "'*:directory:_files -/'"
+	default:
+		c := cfg.Completers[kind]
+		return "'*:" + c.Label + ":" + c.Zsh + "'"
 	}
-	return ""
 }
 
 // zshFlagSpecs returns one `_arguments` spec per visible flag. Aliased
@@ -167,7 +329,7 @@ func zshFlagSpecs(cfg *Config, cmd *Command) []string {
 		forms   []string
 		usage   string
 		isBool  bool
-		valKind string // "env" | "path" | ""
+		valKind string
 	}
 	var specs []spec
 
@@ -176,13 +338,13 @@ func zshFlagSpecs(cfg *Config, cmd *Command) []string {
 		s := spec{
 			name:    f.Name,
 			usage:   f.Usage,
-			isBool:  f.DefValue == "true" || f.DefValue == "false",
+			isBool:  isBoolFlag(f),
 			forms:   []string{dashed(f.Name)},
-			valKind: flagValueKind(cfg, f.Name),
+			valKind: cfg.FlagCompleters[f.Name],
 		}
 		if long, ok := longFor[f.Name]; ok {
 			s.forms = append(s.forms, dashed(long))
-			if kind := flagValueKind(cfg, long); kind != "" && s.valKind == "" {
+			if kind := cfg.FlagCompleters[long]; kind != "" && s.valKind == "" {
 				s.valKind = kind
 			}
 		}
@@ -196,7 +358,7 @@ func zshFlagSpecs(cfg *Config, cmd *Command) []string {
 	out := make([]string, 0, len(specs))
 	for _, s := range specs {
 		desc := "[" + zshEscBracket(s.usage) + "]"
-		action := zshAction(s.isBool, s.valKind)
+		action := zshAction(cfg, s.isBool, s.valKind)
 		if len(s.forms) > 1 {
 			out = append(out, fmt.Sprintf("'(%s)'{%s}'%s%s'",
 				strings.Join(s.forms, " "), strings.Join(s.forms, ","), desc, action))
@@ -207,30 +369,21 @@ func zshFlagSpecs(cfg *Config, cmd *Command) []string {
 	return out
 }
 
-// flagValueKind returns "env", "path", or "" based on the flag name.
-// Env flags are detected by name (registerEnvFlag enforces the convention).
-// Path flags come from the explicit Config.PathFlags allowlist.
-func flagValueKind(cfg *Config, name string) string {
-	if name == "env" || name == "environment" {
-		return "env"
-	}
-	if cfg.PathFlags[name] {
-		return "path"
-	}
-	return ""
-}
-
-func zshAction(isBool bool, valKind string) string {
+func zshAction(cfg *Config, isBool bool, valKind string) string {
 	if isBool {
 		return ""
 	}
 	switch valKind {
-	case "env":
-		return ":env:_hulak_envs"
-	case "path":
+	case "":
+		return ":value:"
+	case KindFile:
 		return ":path:_files"
+	case KindDir:
+		return ":directory:_files -/"
+	default:
+		c := cfg.Completers[valKind]
+		return ":" + c.Label + ":" + c.Zsh
 	}
-	return ":value:"
 }
 
 func zshDesc(name, short string) string {
@@ -257,17 +410,15 @@ func zshEscBracket(s string) string {
 // value (so the walker skips that value when chaining). Collected once so
 // the generated script doesn't re-walk the tree on every tab press.
 type bashCtx struct {
-	validPaths []string        // alias-expanded chains
-	valueFlags map[string]bool // dashed names that consume the next word
-	envFlags   map[string]bool // subset whose value completes env names
-	pathFlags  map[string]bool // subset whose value completes a filesystem path
+	validPaths []string                   // alias-expanded chains
+	valueFlags map[string]bool            // dashed names that consume the next word
+	kindFlags  map[string]map[string]bool // completion kind -> dashed names whose value it completes
 }
 
 func collectBashCtx(cfg *Config, root *Command) bashCtx {
 	ctx := bashCtx{
 		valueFlags: map[string]bool{},
-		envFlags:   map[string]bool{},
-		pathFlags:  map[string]bool{},
+		kindFlags:  map[string]map[string]bool{},
 	}
 	addForm := func(set map[string]bool, name string) {
 		set["-"+name] = true
@@ -280,15 +431,15 @@ func collectBashCtx(cfg *Config, root *Command) bashCtx {
 		ctx.validPaths = append(ctx.validPaths, patterns...)
 		if cmd.Flags != nil {
 			cmd.Flags.VisitAll(func(f *flag.Flag) {
-				if cfg.HiddenFlags[f.Name] || f.DefValue == "true" || f.DefValue == "false" {
+				if cfg.HiddenFlags[f.Name] || isBoolFlag(f) {
 					return
 				}
 				addForm(ctx.valueFlags, f.Name)
-				switch flagValueKind(cfg, f.Name) {
-				case "env":
-					addForm(ctx.envFlags, f.Name)
-				case "path":
-					addForm(ctx.pathFlags, f.Name)
+				if kind := cfg.FlagCompleters[f.Name]; kind != "" {
+					if ctx.kindFlags[kind] == nil {
+						ctx.kindFlags[kind] = map[string]bool{}
+					}
+					addForm(ctx.kindFlags[kind], f.Name)
 				}
 			})
 		}
@@ -302,7 +453,7 @@ func collectBashCtx(cfg *Config, root *Command) bashCtx {
 			walk(sub, next)
 		}
 	}
-	walk(root, []string{"hulak"})
+	walk(root, []string{root.Name})
 	sort.Strings(ctx.validPaths)
 	return ctx
 }
@@ -316,95 +467,31 @@ func sortedKeys(m map[string]bool) []string {
 	return out
 }
 
-func generateBashCompletion(w io.Writer, root *Command) {
-	p := func(format string, a ...any) { fmt.Fprintf(w, format+"\n", a...) }
-	cfg := root.EffectiveConfig()
-	ctx := collectBashCtx(cfg, root)
+func emitBashReader(p func(string, ...any), name, compgenFlag string) {
+	p("%s() {", name)
+	p("  local cur=$1 f")
+	p("  COMPREPLY=()")
+	p("  while IFS= read -r f; do [[ -n $f ]] && COMPREPLY+=(\"$f\"); done < <(compgen %s -- \"$cur\")", compgenFlag)
+	p("  compopt -o filenames 2>/dev/null")
+	p("}")
+	p("")
+}
 
-	p("# bash completion for hulak")
-	p("# Generated by 'hulak gendocs' — do not edit by hand.")
-	p("")
-	p("_hulak_envs() {")
-	p("  [[ -d env ]] || return 0")
-	p("  local f")
-	p("  for f in env/*.env; do [[ -e $f ]] || continue; f=${f##*/}; printf '%%s\\n' \"${f%%.env}\"; done")
-	p("}")
-	p("")
-	// Path completion that handles filenames with spaces: read compgen
-	// output one line at a time instead of word-splitting on $(...).
-	// `compopt -o filenames` asks bash to quote and append slashes correctly.
-	p("_hulak_path_files() {")
-	p("  local cur=$1 f")
-	p("  COMPREPLY=()")
-	p("  while IFS= read -r f; do [[ -n $f ]] && COMPREPLY+=(\"$f\"); done < <(compgen -f -- \"$cur\")")
-	p("  compopt -o filenames 2>/dev/null")
-	p("}")
-	p("")
-	// Yaml-only file completion uses a case-pattern filter so we don't need
-	// `shopt -s extglob` enabled in the user's shell.
-	p("_hulak_yaml_files() {")
-	p("  local cur=$1 f")
-	p("  COMPREPLY=()")
-	p("  while IFS= read -r f; do")
-	p("    case \"$f\" in *.yaml|*.yml|*.hk.yaml|*.hk.yml) COMPREPLY+=(\"$f\") ;; esac")
-	p("  done < <(compgen -f -- \"$cur\")")
-	p("  while IFS= read -r f; do [[ -n $f ]] && COMPREPLY+=(\"$f\"); done < <(compgen -d -- \"$cur\")")
-	p("  compopt -o filenames 2>/dev/null")
-	p("}")
-	p("")
-	p("_hulak_takes_value() {")
-	p("  case \"$1\" in")
-	p("    %s) return 0 ;;", strings.Join(sortedKeys(ctx.valueFlags), "|"))
-	p("  esac")
-	p("  return 1")
-	p("}")
-	p("")
-	envForms := sortedKeys(ctx.envFlags)
-	pathForms := sortedKeys(ctx.pathFlags)
-	p("_hulak_complete_value() {")
-	p("  case \"$1\" in")
-	if len(envForms) > 0 {
-		p("    %s) COMPREPLY=( $(compgen -W \"$(_hulak_envs)\" -- \"$2\") ) ;;", strings.Join(envForms, "|"))
+func bashComplete(cfg *Config, fn, kind, word string) string {
+	switch kind {
+	case KindFile:
+		return fn + "_path_files " + word
+	case KindDir:
+		return fn + "_dir_files " + word
+	default:
+		return cfg.Completers[kind].Bash(word)
 	}
-	if len(pathForms) > 0 {
-		p("    %s) _hulak_path_files \"$2\" ;;", strings.Join(pathForms, "|"))
-	}
-	p("    *) COMPREPLY=() ;;")
-	p("  esac")
-	p("}")
-	p("")
-	p("_hulak_is_path() {")
-	p("  case \"$1\" in")
-	p("    %s) return 0 ;;", strings.Join(ctx.validPaths, "|"))
-	p("  esac")
-	p("  return 1")
-	p("}")
-	p("")
-	p("_hulak() {")
-	p("  local cur=\"${COMP_WORDS[COMP_CWORD]}\" prev=\"${COMP_WORDS[COMP_CWORD-1]}\" chain=hulak i=1")
-	p("  if _hulak_takes_value \"$prev\"; then _hulak_complete_value \"$prev\" \"$cur\"; return; fi")
-	p("  while (( i < COMP_CWORD )); do")
-	p("    local w=\"${COMP_WORDS[i]}\"")
-	p("    if [[ -z $w ]]; then ((i++)); continue; fi")
-	p("    if [[ $w == -* ]]; then")
-	p("      _hulak_takes_value \"$w\" && ((i++))")
-	p("      ((i++)); continue")
-	p("    fi")
-	p("    if _hulak_is_path \"$chain:$w\"; then chain+=:$w; ((i++)); else break; fi")
-	p("  done")
-	p("  case \"$chain\" in")
-	bashEmitCases(p, cfg, root, []string{"hulak"})
-	p("    *) COMPREPLY=() ;;")
-	p("  esac")
-	p("}")
-	p("")
-	p("complete -F _hulak hulak")
 }
 
 // bashEmitCases walks the tree emitting one case clause per visible command
 // path. patterns is every alias-expanded path leading to cmd; extended as
 // we recurse so we never re-resolve aliases.
-func bashEmitCases(p func(string, ...any), cfg *Config, cmd *Command, patterns []string) {
+func bashEmitCases(p func(string, ...any), cfg *Config, fn string, cmd *Command, patterns []string) {
 	subs := cmd.VisibleSubs()
 	var sugg []string
 	for _, sub := range subs {
@@ -419,15 +506,14 @@ func bashEmitCases(p func(string, ...any), cfg *Config, cmd *Command, patterns [
 	}
 	sort.Strings(sugg)
 
-	if len(sugg) > 0 {
+	if kind := argKind(cmd); len(sugg) > 0 || kind != "" {
 		p("    %s)", strings.Join(patterns, "|"))
 		switch {
-		case argKind(cmd) == "yaml":
+		case kind != "" && len(sugg) == 0:
+			p("      %s", bashComplete(cfg, fn, kind, `"$cur"`))
+		case kind != "":
 			p("      if [[ $cur == -* ]]; then COMPREPLY=( $(compgen -W %q -- \"$cur\") )", strings.Join(sugg, " "))
-			p("      else _hulak_yaml_files \"$cur\"; fi")
-		case argKind(cmd) == "file":
-			p("      if [[ $cur == -* ]]; then COMPREPLY=( $(compgen -W %q -- \"$cur\") )", strings.Join(sugg, " "))
-			p("      else _hulak_path_files \"$cur\"; fi")
+			p("      else %s; fi", bashComplete(cfg, fn, kind, `"$cur"`))
 		default:
 			p("      COMPREPLY=( $(compgen -W %q -- \"$cur\") )", strings.Join(sugg, " "))
 		}
@@ -441,6 +527,6 @@ func bashEmitCases(p func(string, ...any), cfg *Config, cmd *Command, patterns [
 				next = append(next, base+":"+name)
 			}
 		}
-		bashEmitCases(p, cfg, sub, next)
+		bashEmitCases(p, cfg, fn, sub, next)
 	}
 }

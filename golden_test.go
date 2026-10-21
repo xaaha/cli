@@ -53,14 +53,18 @@ func TestD9GoldenOutput(t *testing.T) {
 		{"error_unknown_command", func(t *testing.T) string { return executeOutput(t, "bogus") }},
 		{"error_bad_flag", func(t *testing.T) string { return executeOutput(t, "run", "--nope") }},
 		{"error_bad_flag_nested", func(t *testing.T) string { return executeOutput(t, "secrets", "keys", "set", "--nope") }},
-		{"completion_zsh", func(*testing.T) string {
+		{"completion_zsh", func(t *testing.T) string {
 			var b bytes.Buffer
-			generateZshCompletion(&b, fixtureTree())
+			if err := WriteZshCompletion(&b, fixtureTree()); err != nil {
+				t.Fatal(err)
+			}
 			return b.String()
 		}},
-		{"completion_bash", func(*testing.T) string {
+		{"completion_bash", func(t *testing.T) string {
 			var b bytes.Buffer
-			generateBashCompletion(&b, fixtureTree())
+			if err := WriteBashCompletion(&b, fixtureTree()); err != nil {
+				t.Fatal(err)
+			}
 			return b.String()
 		}},
 	}

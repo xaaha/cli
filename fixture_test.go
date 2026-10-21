@@ -17,13 +17,45 @@ func hulakConfig() *Config {
 		},
 		HiddenFlags: map[string]bool{"h": true, "v": true},
 		Color:       ColorAlways,
-		PathFlags: map[string]bool{
-			"out": true, "o": true,
-			"file-path": true, "fp": true,
-			"file": true, "f": true,
-			"ssh-identity": true,
-			"dir":          true,
-			"dirseq":       true,
+		FlagCompleters: map[string]string{
+			"out": KindFile, "o": KindFile,
+			"file-path": KindFile, "fp": KindFile,
+			"file": KindFile, "f": KindFile,
+			"ssh-identity": KindFile,
+			"dir":          KindFile,
+			"dirseq":       KindFile,
+			"env":          "env", "environment": "env",
+		},
+		Completers: map[string]Completer{
+			"env": {
+				Label: "env",
+				Zsh:   "_hulak_envs",
+				Bash:  func(word string) string { return `COMPREPLY=( $(compgen -W "$(_hulak_envs)" -- ` + word + `) )` },
+				ZshFuncs: `_hulak_envs() {
+  [[ -d env ]] || return
+  local -a envs=(${(f)"$(cd env && for f in *.env(N); do print -- "${f%.env}"; done)"})
+  (( ${#envs} )) && _describe -t envs 'environment' envs
+}`,
+				BashFuncs: `_hulak_envs() {
+  [[ -d env ]] || return 0
+  local f
+  for f in env/*.env; do [[ -e $f ]] || continue; f=${f##*/}; printf '%s\n' "${f%.env}"; done
+}`,
+			},
+			"yaml": {
+				Label: "file or directory",
+				Zsh:   `_files -g "*.(yaml|yml|hk.yaml|hk.yml)"`,
+				Bash:  func(word string) string { return "_hulak_yaml_files " + word },
+				BashFuncs: `_hulak_yaml_files() {
+  local cur=$1 f
+  COMPREPLY=()
+  while IFS= read -r f; do
+    case "$f" in *.yaml|*.yml|*.hk.yaml|*.hk.yml) COMPREPLY+=("$f") ;; esac
+  done < <(compgen -f -- "$cur")
+  while IFS= read -r f; do [[ -n $f ]] && COMPREPLY+=("$f"); done < <(compgen -d -- "$cur")
+  compopt -o filenames 2>/dev/null
+}`,
+			},
 		},
 	}
 }

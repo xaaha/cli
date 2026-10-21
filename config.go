@@ -13,8 +13,11 @@ type Config struct {
 	FlagAliases map[string]string
 	// HiddenFlags are left out of help and completion. Default: h, v.
 	HiddenFlags map[string]bool
-	// PathFlags are flags whose value completes as a filesystem path.
-	PathFlags map[string]bool
+	// FlagCompleters maps a flag name to the completion kind of its value:
+	// KindFile, KindDir, or a key of Completers.
+	FlagCompleters map[string]string
+	// Completers registers app-specific completion kinds by name.
+	Completers map[string]Completer
 	// Out receives help output. Default: os.Stdout.
 	Out io.Writer
 	// Err receives diagnostics. Default: os.Stderr.
