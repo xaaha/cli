@@ -67,6 +67,7 @@ printf '%s\n' "${COMPREPLY[@]}" | sort | tr '\n' ' '
 		{"a space after --flag= starts a new word", []string{"hulak", "--env", "=", ""}, "--debug --env --environment --file-path --fp --help completion env import init run secrets version ", "hulak --env= "},
 		{"a space after --flag== starts a new word", []string{"hulak", "--env", "==", ""}, "--debug --env --environment --file-path --fp --help completion env import init run secrets version ", "hulak --env== "},
 		{"a quoted value containing = after a bool flag is a positional", []string{"hulak", "--debug", `"a=b"`, "secrets", ""}, "--debug --env --environment --file-path --fp --help completion env import init run secrets version ", `hulak --debug "a=b" secrets `},
+		{"a quoted value containing = right before the cursor is not a separator", []string{"hulak", "--env", `"a=b"`, ""}, "--debug --env --environment --file-path --fp --help completion env import init run secrets version ", ""},
 		{"a glob-like word does not act as a pattern", []string{"hulak", "-*", "=", "secrets", ""}, "keys list ", "hulak -*= secrets "},
 		{"an empty value next to a filled one", []string{"hulak", "--fp", "=", "--env", "=", "prod", "secrets", ""}, "keys list ", "hulak --fp= --env=prod secrets "},
 		{"-- after a positional still counts", []string{"hulak", "run", "x", "--", "-"}, " ", ""},
