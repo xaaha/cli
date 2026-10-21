@@ -26,3 +26,21 @@ func TestReviewAFHelpFlagsAddedByAnotherTreeStillCount(t *testing.T) {
 		t.Errorf("-h added by the other tree was ignored: ran=%v", ranB)
 	}
 }
+
+func TestReviewAMHelpRequestDoesNotCarryAcrossTrees(t *testing.T) {
+	shared := flag.NewFlagSet("shared", flag.ContinueOnError)
+	mk := func(alias string, ran *bool) *Command {
+		return &Command{Name: "app", Config: &Config{Out: io.Discard, FlagAliases: map[string]string{"help": alias}},
+			SubCommands: []*Command{{Name: "leaf", Flags: shared, Run: func([]string) error { *ran = true; return nil }}}}
+	}
+	var ranA, ranB bool
+	if err := mk("h", &ranA).Execute([]string{"leaf", "x", "-h"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := mk("H", &ranB).Execute([]string{"leaf", "y"}); err != nil {
+		t.Fatal(err)
+	}
+	if ranA || !ranB {
+		t.Errorf("ranA=%v ranB=%v, want only B to run", ranA, ranB)
+	}
+}

@@ -8,7 +8,7 @@ import (
 )
 
 func TestReviewAEInvalidHelpAliasIsAnError(t *testing.T) {
-	for _, alias := range []string{"-x", "a=b", "a b"} {
+	for _, alias := range []string{"-x", "a=b", "a b", "a'b", "a;b", "a$b"} {
 		mk := func() *Command {
 			fs := flag.NewFlagSet("run", flag.ContinueOnError)
 			return &Command{Name: "app", Config: &Config{Out: io.Discard, FlagAliases: map[string]string{"help": alias}},
@@ -23,5 +23,13 @@ func TestReviewAEInvalidHelpAliasIsAnError(t *testing.T) {
 		if err := WriteBashCompletion(io.Discard, mk()); err == nil {
 			t.Errorf("WriteBashCompletion with help alias %q: no error", alias)
 		}
+	}
+}
+
+func TestReviewAMHelpAliasIsCheckedWithoutAnyFlagSet(t *testing.T) {
+	root := &Command{Name: "app", Config: &Config{Out: io.Discard, FlagAliases: map[string]string{"help": "-x"}},
+		SubCommands: []*Command{{Name: "run", Run: func([]string) error { return nil }}}}
+	if err := root.Execute([]string{"run"}); err == nil {
+		t.Error("invalid help alias accepted on a tree with no FlagSets")
 	}
 }
