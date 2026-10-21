@@ -48,7 +48,6 @@ _hulak_is_path() {
 
 _hulak_empty_after() {
   local line=$COMP_LINE k
-  [[ -n $line ]] || return 1
   for (( k = 0; k <= $1; k++ )); do
     line=${line#"${line%%[![:space:]]*}"}
     [[ $line == "${COMP_WORDS[k]}"* ]] || return 1

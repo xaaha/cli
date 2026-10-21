@@ -138,7 +138,6 @@ func WriteBashCompletion(out io.Writer, root *Command) error {
 	p("")
 	p("%s_empty_after() {", fn)
 	p("  local line=$COMP_LINE k")
-	p("  [[ -n $line ]] || return 1")
 	p("  for (( k = 0; k <= $1; k++ )); do")
 	p("    line=${line#\"${line%%%%[![:space:]]*}\"}")
 	p("    [[ $line == \"${COMP_WORDS[k]}\"* ]] || return 1")

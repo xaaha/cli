@@ -59,6 +59,7 @@ printf '%s\n' "${COMPREPLY[@]}" | sort | tr '\n' ' '
 		{"an empty --flag= value does not take the next word", []string{"hulak", "--env", "=", "secrets", ""}, "keys list ", "hulak --env= secrets "},
 		{"a later empty --flag= does not affect an earlier one", []string{"hulak", "--env", "=", "prod", "secrets", "--env", "=", "keys", ""}, "get set ", "hulak --env=prod secrets --env= keys "},
 		{"without COMP_LINE a value after = is assumed", []string{"hulak", "--env", "=", "prod", "secrets", ""}, "keys list ", ""},
+		{"a COMP_LINE that does not match the words assumes a value", []string{"hulak", "--env", "=", "prod", "secrets", ""}, "keys list ", "hulak = secrets "},
 		{"an empty value next to a filled one", []string{"hulak", "--fp", "=", "--env", "=", "prod", "secrets", ""}, "keys list ", "hulak --fp= --env=prod secrets "},
 		{"-- after a positional still counts", []string{"hulak", "run", "x", "--", "-"}, " ", ""},
 		{"after -- the root completes nothing", []string{"hulak", "--", "secrets", ""}, " ", ""},
