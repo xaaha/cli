@@ -62,6 +62,7 @@ printf '%s\n' "${COMPREPLY[@]}" | sort | tr '\n' ' '
 		{"a later empty --flag= does not affect an earlier one", []string{"hulak", "--env", "=", "prod", "secrets", "--env", "=", "keys", ""}, "get set ", "hulak --env=prod secrets --env= keys "},
 		{"without COMP_LINE a value after = is assumed", []string{"hulak", "--env", "=", "prod", "secrets", ""}, "keys list ", ""},
 		{"a COMP_LINE that does not match the words assumes a value", []string{"hulak", "--env", "=", "prod", "secrets", ""}, "keys list ", "hulak = secrets "},
+		{"a value starting with = after --flag==", []string{"hulak", "--env", "==", "prod", "secrets", ""}, "keys list ", "hulak --env==prod secrets "},
 		{"a glob-like word does not act as a pattern", []string{"hulak", "-*", "=", "secrets", ""}, "keys list ", "hulak -*= secrets "},
 		{"an empty value next to a filled one", []string{"hulak", "--fp", "=", "--env", "=", "prod", "secrets", ""}, "keys list ", "hulak --fp= --env=prod secrets "},
 		{"-- after a positional still counts", []string{"hulak", "run", "x", "--", "-"}, " ", ""},
