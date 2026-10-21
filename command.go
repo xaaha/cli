@@ -8,48 +8,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"slices"
 	"strings"
 )
-
-// FlagAliases maps long-form flag names to their short form.
-// The long form is hidden from help output; only the short form is shown
-// with both names on one line (e.g. "-fp, --file-path"). Exported so that
-// gendocs renders man pages using the same aliasing convention as runtime
-// help output.
-var FlagAliases = map[string]string{
-	"file-path":   "fp",
-	"file":        "f",
-	"environment": "env",
-	"version":     "v",
-	"help":        "h",
-	"quiet":       "q",
-	"sequential":  "seq",
-	"type":        "t",
-	"out":         "o",
-}
-
-// HiddenFlags are omitted from help output entirely (utility flags
-// that don't need to clutter command-specific help). Exported alongside
-// FlagAliases for the same reason: gendocs shares the runtime's
-// visibility rules.
-var HiddenFlags = map[string]bool{
-	"h": true, "v": true,
-}
-
-// PathFlagNames lists flag names whose value is a filesystem path.
-// Used by shell completion to pick the right value completer.
-// When adding a new path-taking flag, register the name here so its
-// value autocompletes to files.
-var PathFlagNames = map[string]bool{
-	"out": true, "o": true, // cliflags.RegisterOutput
-	"file-path": true, "fp": true, // root --file-path/--fp
-	"file": true, "f": true, // root --file/-f
-	"ssh-identity": true, // run/init
-	"dir":          true, // root --dir
-	"dirseq":       true, // root --dirseq
-}
 
 // Command represents a CLI command with optional subcommands and flags.
 type Command struct {
@@ -63,6 +24,7 @@ type Command struct {
 	Args        []ArgDef                  // positional arg descriptions (for help only)
 	SubCommands []*Command                // nested subcommands
 	Run         func(args []string) error // handler; nil means subcommand-only
+	Config      *Config                   // tree-wide settings; read from the root command only
 
 	parent *Command
 }
@@ -107,7 +69,7 @@ func (cmd *Command) Execute(args []string) error {
 		} else if firstNonFlag >= 0 {
 			// First non-flag token is not a subcommand — that's a typo, not
 			// a flag-handler invocation. Show help and exit non-zero.
-			fmt.Fprintln(os.Stderr)
+			fmt.Fprintln(cmd.EffectiveConfig().Err)
 			cmd.PrintHelp()
 			return fmt.Errorf("unknown command %q for %s", args[firstNonFlag], cmd.Name)
 		}
@@ -200,9 +162,9 @@ func (cmd *Command) VisibleSubs() []*Command {
 // FlagPairings returns a short->long map for flags where both forms are
 // registered on fs. Renderers (help, man, markdown, completion) use this
 // to merge `-fp, --file-path` onto one line.
-func FlagPairings(fs *flag.FlagSet) map[string]string {
+func (c *Config) FlagPairings(fs *flag.FlagSet) map[string]string {
 	out := make(map[string]string)
-	for long, short := range FlagAliases {
+	for long, short := range c.FlagAliases {
 		if fs.Lookup(long) != nil && fs.Lookup(short) != nil {
 			out[short] = long
 		}
@@ -214,9 +176,9 @@ func FlagPairings(fs *flag.FlagSet) map[string]string {
 // flag except hidden ones and long-form aliases whose short partner is also
 // registered (the short form pulls the long form in via FlagPairings).
 // Same iteration order as flag.FlagSet.VisitAll (alphabetical by name).
-func VisitVisibleFlags(fs *flag.FlagSet, fn func(*flag.Flag)) {
+func (c *Config) VisitVisibleFlags(fs *flag.FlagSet, fn func(*flag.Flag)) {
 	fs.VisitAll(func(f *flag.Flag) {
-		if HiddenFlags[f.Name] || FlagAliases[f.Name] != "" {
+		if c.HiddenFlags[f.Name] || c.FlagAliases[f.Name] != "" {
 			return
 		}
 		fn(f)
@@ -270,13 +232,15 @@ func (cmd *Command) FindSubcommandIndex(args []string) (matchIdx, firstNonFlag i
 
 // PrintHelp prints the command's help to stdout in a style similar to gh CLI.
 func (cmd *Command) PrintHelp() {
+	cfg := cmd.EffectiveConfig()
+	w := cfg.Out
 	if cmd.Long != "" {
-		fmt.Println(cmd.Long)
-		fmt.Println()
+		fmt.Fprintln(w, cmd.Long)
+		fmt.Fprintln(w)
 	}
 
 	if subs := cmd.VisibleSubs(); len(subs) > 0 {
-		printSectionHeader("COMMANDS")
+		printSectionHeader(w, "COMMANDS")
 		var entries []*helpEntry
 		for _, sub := range subs {
 			name := sub.Name
@@ -294,16 +258,16 @@ func (cmd *Command) PrintHelp() {
 		slices.SortFunc(entries, func(a, b *helpEntry) int {
 			return strings.Compare(primaryName(a.Command), primaryName(b.Command))
 		})
-		_ = writeHelpEntries(entries)
-		fmt.Println()
+		_ = writeHelpEntries(w, entries)
+		fmt.Fprintln(w)
 	}
 
 	if cmd.Flags != nil {
-		printFlags(cmd.Flags)
+		printFlags(w, cfg, cmd.Flags)
 	}
 
 	if len(cmd.Args) > 0 {
-		printSectionHeader("ARGUMENTS")
+		printSectionHeader(w, "ARGUMENTS")
 		var entries []*helpEntry
 		for _, a := range cmd.Args {
 			name := "<" + a.Name + ">"
@@ -316,36 +280,36 @@ func (cmd *Command) PrintHelp() {
 				Description: desc,
 			})
 		}
-		_ = writeHelpEntries(entries)
-		fmt.Println()
+		_ = writeHelpEntries(w, entries)
+		fmt.Fprintln(w)
 	}
 
 	if len(cmd.Examples) > 0 {
-		printSectionHeader("EXAMPLES")
+		printSectionHeader(w, "EXAMPLES")
 		for _, ex := range cmd.Examples {
-			fmt.Printf("  $ %s\n", ex.Command)
-			fmt.Printf("    %s\n", ex.Description)
+			fmt.Fprintf(w, "  $ %s\n", ex.Command)
+			fmt.Fprintf(w, "    %s\n", ex.Description)
 		}
-		fmt.Println()
+		fmt.Fprintln(w)
 	}
 
-	printSectionHeader("LEARN MORE")
-	fmt.Printf("  Use `%s <command> --help` for more information about a command.\n", cmd.root().Name)
+	printSectionHeader(w, "LEARN MORE")
+	fmt.Fprintf(w, "  Use `%s <command> --help` for more information about a command.\n", cmd.root().Name)
 }
 
 // printFlags renders the FLAGS section, merging short/long aliases onto one
 // line (e.g. "-fp, --file-path  string") and skipping hidden flags.
-func printFlags(fs *flag.FlagSet) {
-	longFor := FlagPairings(fs)
+func printFlags(w io.Writer, cfg *Config, fs *flag.FlagSet) {
+	longFor := cfg.FlagPairings(fs)
 
 	hasVisible := false
-	VisitVisibleFlags(fs, func(*flag.Flag) { hasVisible = true })
+	cfg.VisitVisibleFlags(fs, func(*flag.Flag) { hasVisible = true })
 	if !hasVisible {
 		return
 	}
 
-	printSectionHeader("FLAGS")
-	VisitVisibleFlags(fs, func(f *flag.Flag) {
+	printSectionHeader(w, "FLAGS")
+	cfg.VisitVisibleFlags(fs, func(f *flag.Flag) {
 		// Build flag name: "-fp, --file-path" or just "-debug"
 		label := "  -" + f.Name
 		if long, ok := longFor[f.Name]; ok {
@@ -369,14 +333,14 @@ func printFlags(fs *flag.FlagSet) {
 			}
 		}
 
-		fmt.Println(label)
+		fmt.Fprintln(w, label)
 		usage := f.Usage
 		if f.DefValue != "" && f.DefValue != "false" && f.DefValue != "0" && f.DefValue != "0s" {
 			usage += fmt.Sprintf(" (default %q)", f.DefValue)
 		}
-		fmt.Printf("    \t%s\n", usage)
+		fmt.Fprintf(w, "    \t%s\n", usage)
 	})
-	fmt.Println()
+	fmt.Fprintln(w)
 }
 
 // isHelpArg returns true if the argument is a help request.

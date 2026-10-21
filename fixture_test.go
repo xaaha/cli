@@ -2,6 +2,31 @@ package cli
 
 import "flag"
 
+func hulakConfig() *Config {
+	return &Config{
+		FlagAliases: map[string]string{
+			"file-path":   "fp",
+			"file":        "f",
+			"environment": "env",
+			"version":     "v",
+			"help":        "h",
+			"quiet":       "q",
+			"sequential":  "seq",
+			"type":        "t",
+			"out":         "o",
+		},
+		HiddenFlags: map[string]bool{"h": true, "v": true},
+		PathFlags: map[string]bool{
+			"out": true, "o": true,
+			"file-path": true, "fp": true,
+			"file": true, "f": true,
+			"ssh-identity": true,
+			"dir":          true,
+			"dirseq":       true,
+		},
+	}
+}
+
 func fixtureTree() *Command {
 	rootFlags := flag.NewFlagSet("hulak", flag.ContinueOnError)
 	rootFlags.String("env", "global", "Environment file to use")
@@ -31,9 +56,10 @@ func fixtureTree() *Command {
 	noop := func([]string) error { return nil }
 
 	return &Command{
-		Name:  "hulak",
-		Long:  "Hulak is a file-based API client.",
-		Flags: rootFlags,
+		Name:   "hulak",
+		Long:   "Hulak is a file-based API client.",
+		Flags:  rootFlags,
+		Config: hulakConfig(),
 		SubCommands: []*Command{
 			{
 				Name:  "run",

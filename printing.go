@@ -2,7 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"os"
+	"io"
 	"text/tabwriter"
 )
 
@@ -17,8 +17,8 @@ type Example struct {
 	Description string
 }
 
-func printSectionHeader(msg string) {
-	fmt.Printf("%s%s%s\n", colorYellow, msg, colorReset)
+func printSectionHeader(w io.Writer, msg string) {
+	fmt.Fprintf(w, "%s%s%s\n", colorYellow, msg, colorReset)
 }
 
 type helpEntry struct {
@@ -26,8 +26,8 @@ type helpEntry struct {
 	Description string
 }
 
-func writeHelpEntries(commands []*helpEntry) error {
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 4, ' ', 0)
+func writeHelpEntries(out io.Writer, commands []*helpEntry) error {
+	w := tabwriter.NewWriter(out, 0, 0, 4, ' ', 0)
 	for _, cmd := range commands {
 		if _, err := fmt.Fprintf(w, "  %s\t- %s\n", cmd.Command, cmd.Description); err != nil {
 			return err
