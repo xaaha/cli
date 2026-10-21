@@ -38,6 +38,9 @@ func WriteZshCompletion(w io.Writer, root *Command) error {
 	}
 	name := root.Name
 	fn := "_" + shellFn(name)
+	if err := checkZshNames(root, fn); err != nil {
+		return err
+	}
 	p := func(format string, a ...any) { fmt.Fprintf(w, format+"\n", a...) }
 	p("#compdef %s", name)
 	p("# Generated code. Do not edit by hand.")
@@ -266,6 +269,38 @@ func isBoolFlag(f *flag.Flag) bool {
 }
 
 // --- zsh ---
+
+// checkZshNames fails when two commands would define the same zsh function.
+func checkZshNames(root *Command, rootFn string) error {
+	owner := map[string]string{}
+	claim := func(fn, path string) error {
+		if prev, ok := owner[fn]; ok {
+			return fmt.Errorf("zsh function %s would be defined for both %q and %q", fn, prev, path)
+		}
+		owner[fn] = path
+		return nil
+	}
+	var walk func(cmd *Command, fn, path string) error
+	walk = func(cmd *Command, fn, path string) error {
+		if err := claim(fn, path); err != nil {
+			return err
+		}
+		subs := cmd.VisibleSubs()
+		if len(subs) == 0 {
+			return nil
+		}
+		if err := claim(fn+"_subs", path+" (subcommand list)"); err != nil {
+			return err
+		}
+		for _, sub := range subs {
+			if err := walk(sub, fn+"_"+shellFn(sub.Name), path+" "+sub.Name); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return walk(root, rootFn, root.Name)
+}
 
 // emitZshCmd writes the completer for cmd and recurses into its visible
 // subcommands. Function name carries the path (e.g. _app_secrets_set).
