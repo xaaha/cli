@@ -393,19 +393,7 @@ func printFlags(w io.Writer, cfg *Config, color bool, fs *flag.FlagSet) {
 
 		// Show type hint for non-bool flags using the flag's actual type
 		if !isBoolFlag(f) {
-			typeName := fmt.Sprintf("%T", f.Value)
-			// flag.Value wraps types as *flag.stringValue, *flag.intValue, etc.
-			// Extract the underlying type name from the wrapper
-			switch {
-			case strings.Contains(typeName, "int"):
-				label += " int"
-			case strings.Contains(typeName, "float"):
-				label += " float"
-			case strings.Contains(typeName, "duration"):
-				label += " duration"
-			default:
-				label += " string"
-			}
+			label += " " + typeHint(f.Value)
 		}
 
 		fmt.Fprintln(w, label)
@@ -416,6 +404,20 @@ func printFlags(w io.Writer, cfg *Config, color bool, fs *flag.FlagSet) {
 		fmt.Fprintf(w, "    \t%s\n", usage)
 	})
 	fmt.Fprintln(w)
+}
+
+func typeHint(v flag.Value) string {
+	switch fmt.Sprintf("%T", v) {
+	case "*flag.intValue", "*flag.int64Value":
+		return "int"
+	case "*flag.uintValue", "*flag.uint64Value":
+		return "uint"
+	case "*flag.float64Value":
+		return "float"
+	case "*flag.durationValue":
+		return "duration"
+	}
+	return "string"
 }
 
 // isHelpArg returns true if the argument is a help request.
