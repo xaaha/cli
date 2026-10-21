@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"flag"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -49,22 +50,29 @@ func TestReviewVZshActionKeepsBackslashAndColon(t *testing.T) {
 	}
 }
 
-type failOnce struct{ failed bool }
+type failOnce struct {
+	failed     bool
+	afterwards int
+}
 
 func (f *failOnce) Write(p []byte) (int, error) {
 	if !f.failed {
 		f.failed = true
 		return 0, errDiskFull
 	}
+	f.afterwards++
 	return len(p), nil
 }
 
 func TestReviewVFirstWriteErrorSurvivesLaterSuccess(t *testing.T) {
-	if err := WriteZshCompletion(&failOnce{}, fixtureTree()); !errors.Is(err, errDiskFull) {
-		t.Errorf("zsh: error = %v, want %v", err, errDiskFull)
-	}
-	if err := WriteBashCompletion(&failOnce{}, fixtureTree()); !errors.Is(err, errDiskFull) {
-		t.Errorf("bash: error = %v, want %v", err, errDiskFull)
+	for shell, write := range map[string]func(io.Writer, *Command) error{"zsh": WriteZshCompletion, "bash": WriteBashCompletion} {
+		w := &failOnce{}
+		if err := write(w, fixtureTree()); !errors.Is(err, errDiskFull) {
+			t.Errorf("%s: error = %v, want %v", shell, err, errDiskFull)
+		}
+		if w.afterwards != 0 {
+			t.Errorf("%s kept writing %d times after the first failure", shell, w.afterwards)
+		}
 	}
 }
 
