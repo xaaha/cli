@@ -39,6 +39,20 @@ type ArgDef struct {
 
 // Execute dispatches args to the correct subcommand or runs this command.
 func (cmd *Command) Execute(args []string) error {
+	if cmd.parent == nil {
+		cmd.link()
+	}
+	return cmd.execute(args)
+}
+
+func (cmd *Command) link() {
+	for _, sub := range cmd.SubCommands {
+		sub.parent = cmd
+		sub.link()
+	}
+}
+
+func (cmd *Command) execute(args []string) error {
 	// No args: show help if subcommand-only, or run with empty args
 	if len(args) == 0 {
 		if cmd.Run == nil {
@@ -61,15 +75,14 @@ func (cmd *Command) Execute(args []string) error {
 	if len(cmd.SubCommands) > 0 {
 		if idx, firstNonFlag := cmd.FindSubcommandIndex(args); idx >= 0 {
 			sub := cmd.FindSub(args[idx])
-			sub.parent = cmd
 			rest := append(append([]string(nil), args[:idx]...), args[idx+1:]...)
-			return sub.Execute(rest)
+			return sub.execute(rest)
 		} else if firstNonFlag >= 0 {
 			// First non-flag token is not a subcommand — that's a typo, not
 			// a flag-handler invocation. Show help and exit non-zero.
 			fmt.Fprintln(cmd.EffectiveConfig().Err)
 			cmd.PrintHelp()
-			return fmt.Errorf("unknown command %q for %s", args[firstNonFlag], cmd.Name)
+			return fmt.Errorf("unknown command %q for %s", args[firstNonFlag], cmd.path())
 		}
 	}
 
@@ -228,7 +241,9 @@ func (cmd *Command) FindSubcommandIndex(args []string) (matchIdx, firstNonFlag i
 	return -1, -1
 }
 
-// PrintHelp prints the command's help to stdout in a style similar to gh CLI.
+// PrintHelp prints the command's help to Config.Out in a style similar to gh CLI.
+// A subcommand reads the root's Config once Execute or a completion writer
+// has run on the root; before that it acts as its own root.
 func (cmd *Command) PrintHelp() {
 	cfg := cmd.EffectiveConfig()
 	w := cfg.Out

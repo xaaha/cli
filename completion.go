@@ -31,6 +31,7 @@ type Completer struct {
 
 // WriteZshCompletion writes a zsh completion script for the tree under root.
 func WriteZshCompletion(w io.Writer, root *Command) error {
+	root.link()
 	cfg := root.EffectiveConfig()
 	if _, err := validateTree(cfg, root); err != nil {
 		return err
@@ -60,6 +61,7 @@ func WriteZshCompletion(w io.Writer, root *Command) error {
 
 // WriteBashCompletion writes a bash completion script for the tree under root.
 func WriteBashCompletion(w io.Writer, root *Command) error {
+	root.link()
 	cfg := root.EffectiveConfig()
 	used, err := validateTree(cfg, root)
 	if err != nil {
