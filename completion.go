@@ -22,16 +22,21 @@ type Completer struct {
 	Label string
 	// Zsh is the zsh action, e.g. `_files -g "*.yaml"` or a function name.
 	Zsh string
-	// Bash returns a bash command that fills COMPREPLY for the quoted word.
+	// Bash returns a bash command that fills COMPREPLY with completions for
+	// word. The word is a quoted shell expression such as "$cur", ready to
+	// paste into the command.
 	Bash func(word string) string
-	// ZshFuncs and BashFuncs hold helper function definitions the actions call.
-	ZshFuncs  string
+	// ZshFuncs holds zsh function definitions the Zsh action calls. They are
+	// written once into the script.
+	ZshFuncs string
+	// BashFuncs holds bash function definitions the Bash command calls. They
+	// are written once into the script.
 	BashFuncs string
 }
 
 // WriteZshCompletion writes a zsh completion script for the tree under root.
 // It links the tree first, as Execute does, and fails on an invalid Config, a
-// tree it cannot script, or the first error from w.
+// tree it cannot script, or the first error from out.
 func WriteZshCompletion(out io.Writer, root *Command) error {
 	w := &errWriter{w: out}
 	if err := root.link(); err != nil {
@@ -63,13 +68,17 @@ func WriteZshCompletion(out io.Writer, root *Command) error {
 			p("")
 		}
 	}
-	p("compdef %s %s", fn, name)
+	p("if [[ $zsh_eval_context[-1] == loadautofunc ]]; then")
+	p("  %s \"$@\"", fn)
+	p("else")
+	p("  compdef %s %s", fn, name)
+	p("fi")
 	return w.err
 }
 
 // WriteBashCompletion writes a bash completion script for the tree under root.
 // It links the tree first, as Execute does, and fails on an invalid Config, a
-// tree it cannot script, or the first error from w.
+// tree it cannot script, or the first error from out.
 // Bash keeps one tree-wide list of flags that take a value, so a flag name
 // that is a bool in one command and takes a value in another is treated as
 // taking a value everywhere.

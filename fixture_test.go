@@ -1,6 +1,10 @@
 package cli
 
-import "flag"
+import (
+	"bytes"
+	"flag"
+	"io"
+)
 
 func hulakConfig() *Config {
 	return &Config{
@@ -152,4 +156,80 @@ func fixtureTree() *Command {
 			{Name: "version", Short: "Print the version", Run: noop},
 		},
 	}
+}
+
+func kapiTree() *Command {
+	watchFlags := flag.NewFlagSet("watch", flag.ContinueOnError)
+	watchFlags.String("reader", "agent", "Reader name")
+	pinFlags := flag.NewFlagSet("pin", flag.ContinueOnError)
+	pinFlags.Bool("top", false, "Pin to the top")
+	noop := func([]string) error { return nil }
+	return &Command{
+		Name: "kapi",
+		SubCommands: []*Command{
+			{Name: "watch", Aliases: []string{"w"}, Short: "Stream events", Flags: watchFlags, Run: noop},
+			{Name: "page", Short: "Page actions", SubCommands: []*Command{
+				{Name: "pin", Short: "Pin a page", Flags: pinFlags, Run: noop},
+			}},
+		},
+	}
+}
+
+func kapiCompletionTree() *Command {
+	sayFlags := flag.NewFlagSet("say", flag.ContinueOnError)
+	sayFlags.String("on", "", "Element id")
+	sayFlags.String("attach", "", "File to attach")
+	noop := func([]string) error { return nil }
+	return &Command{
+		Name: "kapi",
+		Config: &Config{
+			FlagCompleters: map[string]string{"on": "element", "attach": "file"},
+			Completers: map[string]Completer{
+				"element": {
+					Label:     "element id",
+					Zsh:       "_kapi_elements",
+					ZshFuncs:  "_kapi_elements() {\n  compadd -- $(kapi ids 2>/dev/null)\n}",
+					Bash:      func(word string) string { return `COMPREPLY=( $(compgen -W "$(_kapi_elements)" -- ` + word + `) )` },
+					BashFuncs: "_kapi_elements() {\n  kapi ids 2>/dev/null\n}",
+				},
+			},
+		},
+		SubCommands: []*Command{
+			{Name: "say", Short: "Reply as the agent", Flags: sayFlags, Args: []ArgDef{{Name: "page", Required: true, Desc: "Page", Kind: "element"}}, Run: noop},
+			{Name: "open", Short: "Open a folder", Args: []ArgDef{{Name: "dir", Required: true, Desc: "Folder", Kind: "dir"}}, Run: noop},
+		},
+	}
+}
+
+func flagsFirstCompletionTree() *Command {
+	fs := flag.NewFlagSet("say", flag.ContinueOnError)
+	fs.String("on", "", "Element id")
+	return &Command{Name: "kapi", SubCommands: []*Command{{
+		Name: "say", Aliases: []string{"s"}, Flags: fs, FlagsFirst: true,
+		Args: []ArgDef{{Name: "page", Kind: KindFile}}, Run: func([]string) error { return nil },
+	}}}
+}
+
+func linkTree(out *bytes.Buffer) (root, grp, leaf *Command) {
+	leaf = &Command{Name: "leaf", Short: "A leaf", Run: func([]string) error { return nil }}
+	grp = &Command{Name: "grp", Short: "A group", SubCommands: []*Command{leaf}}
+	other := &Command{Name: "other", Short: "Another", Run: func([]string) error { return nil }}
+	root = &Command{Name: "app", Config: &Config{Out: out, Err: io.Discard}, SubCommands: []*Command{grp, other}}
+	return root, grp, leaf
+}
+
+func oneFlagTree(cfg *Config, name, usage string) *Command {
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	fs.String(name, "", usage)
+	return &Command{Name: "app", Config: cfg, SubCommands: []*Command{{Name: "run", Flags: fs, Run: func([]string) error { return nil }}}}
+}
+
+func helpTree(cfg *Config, register func(*flag.FlagSet)) (*Command, *bytes.Buffer) {
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	fs.String("out", "", "Out path")
+	register(fs)
+	var out bytes.Buffer
+	cfg.Out = &out
+	ran := &Command{Name: "run", Flags: fs, Run: func([]string) error { return nil }}
+	return &Command{Name: "app", Config: cfg, SubCommands: []*Command{ran}}, &out
 }

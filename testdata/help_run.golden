@@ -1,5 +1,8 @@
 Run one request file or every request file in a directory.
 
+[93mUSAGE[0m
+  hulak run [flags] <path>
+
 [93mFLAGS[0m
   -env, --environment string
     	Environment file to use (default "global")
@@ -14,6 +17,3 @@ Run one request file or every request file in a directory.
 [93mEXAMPLES[0m
   $ hulak run api/users.hk.yaml
     Run one file
-
-[93mLEARN MORE[0m
-  Use `hulak <command> --help` for more information about a command.

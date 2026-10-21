@@ -2,12 +2,51 @@ package cli
 
 import (
 	"bytes"
+	"errors"
+	"flag"
+	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 )
+
+type failAfter struct{ n int }
+
+func (f *failAfter) Write(p []byte) (int, error) {
+	if f.n <= 0 {
+		return 0, errDiskFull
+	}
+	f.n--
+	return len(p), nil
+}
+
+var errDiskFull = errors.New("disk full")
+
+type failOnce struct {
+	failed     bool
+	afterwards int
+}
+
+func (f *failOnce) Write(p []byte) (int, error) {
+	if !f.failed {
+		f.failed = true
+		return 0, errDiskFull
+	}
+	f.afterwards++
+	return len(p), nil
+}
+
+func degenerateTrees() map[string]*Command {
+	noop := func([]string) error { return nil }
+	boolOnly := flag.NewFlagSet("go", flag.ContinueOnError)
+	boolOnly.Bool("quiet", false, "Less output")
+	return map[string]*Command{
+		"root only":       {Name: "app", Run: noop},
+		"flagless leaves": {Name: "app", SubCommands: []*Command{{Name: "go", Run: noop}}},
+		"bool flags only": {Name: "app", SubCommands: []*Command{{Name: "go", Flags: boolOnly, Run: noop}}},
+	}
+}
 
 // TestCompletionScripts asserts the user-visible surface of both shells in
 // one shot: every visible command and alias, hidden commands skipped, env
@@ -115,101 +154,209 @@ func TestCompletionScripts(t *testing.T) {
 	}
 }
 
-// TestBashCompgenPayloadsAreSafe guards against shell-meta characters
-// (`$`, backtick, backslash) leaking into compgen -W word lists. The
-// generator uses Go's %q which produces double-quoted strings; bash
-// expands $ and backtick inside double quotes, so any name containing
-// those would either mangle or execute at tab time.
-func TestBashCompgenPayloadsAreSafe(t *testing.T) {
-	var buf bytes.Buffer
-	if err := WriteBashCompletion(&buf, fixtureTree()); err != nil {
+func TestRegisteredCompleterAppearsInBothShells(t *testing.T) {
+	zsh, bash := scripts(t, kapiCompletionTree())
+	for _, want := range []string{
+		"#compdef kapi",
+		"compdef _kapi kapi",
+		"_kapi_elements() {\n  compadd",
+		"--on[Element id]:element id:_kapi_elements",
+		"'*:element id:_kapi_elements'",
+		"--attach[File to attach]:path:_files",
+		"'*:directory:_files -/'",
+	} {
+		if !strings.Contains(zsh, want) {
+			t.Errorf("zsh missing %q\n%s", want, zsh)
+		}
+	}
+	for _, want := range []string{
+		"complete -F _kapi kapi",
+		"_kapi_elements() {\n  kapi ids",
+		`--on|-on) COMPREPLY=( $(compgen -W "$(_kapi_elements)" -- "$2") ) ;;`,
+		`else COMPREPLY=( $(compgen -W "$(_kapi_elements)" -- "$cur") ); fi`,
+		`_kapi_path_files "$2"`,
+		"kapi:open)\n      _kapi_dir_files \"$cur\"\n      ;;",
+	} {
+		if !strings.Contains(bash, want) {
+			t.Errorf("bash missing %q\n%s", want, bash)
+		}
+	}
+	for name, s := range map[string]string{"zsh": zsh, "bash": bash} {
+		if strings.Contains(s, "hulak") {
+			t.Errorf("%s script mentions hulak", name)
+		}
+	}
+}
+
+func TestCompletionScriptsAreValidShell(t *testing.T) {
+	for _, tree := range []*Command{fixtureTree(), kapiCompletionTree()} {
+		zsh, bash := scripts(t, tree)
+		for shell, src := range map[string]string{"zsh": zsh, "bash": bash} {
+			t.Run(tree.Name+"/"+shell, func(t *testing.T) { checkSyntax(t, shell, src) })
+		}
+	}
+}
+
+func TestDegenerateTreesGiveWorkingScripts(t *testing.T) {
+	for name, tree := range degenerateTrees() {
+		t.Run(name, func(t *testing.T) {
+			zsh, bash := scripts(t, tree)
+			if strings.Contains(bash, "    ) ") {
+				t.Errorf("bash has an empty case pattern:\n%s", bash)
+			}
+			if !strings.Contains(zsh, "\n_app() {") {
+				t.Errorf("zsh registers _app with compdef but never defines it:\n%s", zsh)
+			}
+			for shell, src := range map[string]string{"zsh": zsh, "bash": bash} {
+				t.Run(shell, func(t *testing.T) { checkSyntax(t, shell, src) })
+			}
+		})
+	}
+}
+
+func TestMissingShellFailsOnCIAndSkipsLocally(t *testing.T) {
+	if os.Getenv("CLI_SHELL_RULE_CHILD") != "" {
+		t.Skip("child process")
+	}
+	run := func(ci bool) (string, error) {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestCompletionScriptsAreValidShell$", "-test.v") //nolint:gosec // re-runs this test binary
+		env := []string{"PATH=/nonexistent", "CLI_SHELL_RULE_CHILD=1"}
+		if ci {
+			env = append(env, "CI=true")
+		}
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	out, err := run(true)
+	if err == nil || !strings.Contains(out, "is required on CI") {
+		t.Errorf("CI without shells: err=%v\n%s", err, out)
+	}
+	out, err = run(false)
+	if err != nil || !strings.Contains(out, "--- SKIP") {
+		t.Errorf("local without shells: err=%v\n%s", err, out)
+	}
+}
+
+func TestCompletionWriterLinksTheTree(t *testing.T) {
+	var out bytes.Buffer
+	root, grp, _ := linkTree(&out)
+	if err := WriteZshCompletion(io.Discard, root); err != nil {
 		t.Fatal(err)
 	}
+	if grp.EffectiveConfig().Out != &out {
+		t.Error("subcommand does not see the root Config after a completion writer ran")
+	}
+}
 
-	for i, line := range strings.Split(buf.String(), "\n") {
-		idx := strings.Index(line, `compgen -W "`)
-		if idx < 0 {
-			continue
+func TestBothCompletionWritersLinkGrandchildren(t *testing.T) {
+	for shell, write := range map[string]func(io.Writer, *Command) error{"zsh": WriteZshCompletion, "bash": WriteBashCompletion} {
+		var out bytes.Buffer
+		leaf := &Command{Name: "leaf", Run: func([]string) error { return nil }}
+		root := &Command{Name: "app", Config: &Config{Out: &out}, SubCommands: []*Command{{Name: "grp", SubCommands: []*Command{leaf}}}}
+		if err := write(io.Discard, root); err != nil {
+			t.Fatal(err)
 		}
-		start := idx + len(`compgen -W "`)
-		end := strings.Index(line[start:], `"`)
-		if end < 0 {
-			continue
+		if leaf.EffectiveConfig().Out != &out {
+			t.Errorf("%s writer did not link the grandchild to the root Config", shell)
 		}
-		payload := line[start : start+end]
-		// _hulak_envs uses $(...) substitution by design; not a literal payload.
-		if strings.Contains(payload, "_hulak_envs") {
-			continue
-		}
-		for _, bad := range []string{"$", "`", "\\"} {
-			if strings.Contains(payload, bad) {
-				t.Errorf("line %d: compgen -W payload contains %q (shell-meta): %s", i+1, bad, payload)
+	}
+}
+
+func TestCompletionWritersReturnWriteErrors(t *testing.T) {
+	for shell, write := range map[string]func(io.Writer, *Command) error{"zsh": WriteZshCompletion, "bash": WriteBashCompletion} {
+		for _, okWrites := range []int{0, 5} {
+			if err := write(&failAfter{n: okWrites}, fixtureTree()); !errors.Is(err, errDiskFull) {
+				t.Errorf("%s after %d writes: error = %v, want %v", shell, okWrites, err, errDiskFull)
 			}
 		}
 	}
 }
 
-// TestBashChainWalker shells out to bash to verify chain resolution. The
-// walker must skip value-taking flags and stop at non-subcommand positionals.
-func TestBashChainWalker(t *testing.T) {
-	bashBin, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip("bash not available")
+func TestCompletionWritersStopAtTheFirstWriteError(t *testing.T) {
+	for shell, write := range map[string]func(io.Writer, *Command) error{"zsh": WriteZshCompletion, "bash": WriteBashCompletion} {
+		w := &failOnce{}
+		if err := write(w, fixtureTree()); !errors.Is(err, errDiskFull) {
+			t.Errorf("%s: error = %v, want %v", shell, err, errDiskFull)
+		}
+		if w.afterwards != 0 {
+			t.Errorf("%s kept writing %d times after the first failure", shell, w.afterwards)
+		}
 	}
+}
 
-	var script bytes.Buffer
-	if err := WriteBashCompletion(&script, fixtureTree()); err != nil {
-		t.Fatal(err)
-	}
-
-	dir := t.TempDir()
-	scriptPath := filepath.Join(dir, "hulak.bash")
-	if err := os.WriteFile(scriptPath, script.Bytes(), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	// One-shot harness: source the script, replay the chain walker against
-	// COMP_WORDS, print the resolved chain. Disabling extglob first
-	// confirms the yaml filter doesn't silently rely on it.
-	harness := `
-shopt -u extglob 2>/dev/null
-source "$1"
-COMP_WORDS=("${@:2}")
-COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))
-chain=hulak; i=1
-while (( i < COMP_CWORD )); do
-  w="${COMP_WORDS[i]}"
-  if [[ -z $w ]]; then ((i++)); continue; fi
-  if [[ $w == -* ]]; then
-    _hulak_takes_value "$w" && ((i++))
-    ((i++)); continue
-  fi
-  if _hulak_is_path "$chain:$w"; then chain+=:$w; ((i++)); else break; fi
-done
-printf '%s' "$chain"
-`
-
-	cases := []struct {
-		name string
-		argv []string
-		want string
-	}{
-		{"flag-with-value", []string{"hulak", "run", "--env", "prod", ""}, "hulak:run"},
-		{"positional-then-flag", []string{"hulak", "run", "file.yaml", "--"}, "hulak:run"},
-		{"secrets-alias", []string{"hulak", "env", "keys", "get", ""}, "hulak:env:keys:get"},
-		{"nested-alias", []string{"hulak", "init", "classic", ""}, "hulak:init:classic"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			args := append([]string{"-c", harness, "_", scriptPath}, tc.argv...)
-			out, err := exec.Command(bashBin, args...).CombinedOutput()
-			if err != nil {
-				t.Fatalf("bash failed: %v\n%s", err, out)
+func TestAliasPairSharesItsCompleter(t *testing.T) {
+	for _, registered := range []string{"out", "o"} {
+		t.Run("registered on "+registered, func(t *testing.T) {
+			fs := flag.NewFlagSet("save", flag.ContinueOnError)
+			fs.String("out", "", "Out path")
+			fs.String("o", "", "Out path")
+			root := &Command{
+				Name: "app",
+				Config: &Config{
+					FlagAliases:    map[string]string{"out": "o"},
+					FlagCompleters: map[string]string{registered: KindFile},
+				},
+				SubCommands: []*Command{{Name: "save", Flags: fs, Run: func([]string) error { return nil }}},
 			}
-			if got := string(out); got != tc.want {
-				t.Errorf("chain = %q, want %q (argv=%v)", got, tc.want, tc.argv)
+			zsh, bash, err := tryScripts(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := `'(--out -o)'{--out,-o}'[Out path]:path:_files'`; !strings.Contains(zsh, want) {
+				t.Errorf("zsh missing %s\n%s", want, zsh)
+			}
+			if want := `--out|-o|-out) _app_path_files "$2" ;;`; !strings.Contains(bash, want) {
+				t.Errorf("bash missing %s\n%s", want, bash)
 			}
 		})
+	}
+}
+
+func TestAliasCompleterNeedsBothHalvesRegistered(t *testing.T) {
+	root := oneFlagTree(&Config{
+		FlagAliases:    map[string]string{"env": "e"},
+		FlagCompleters: map[string]string{"env": KindDir},
+	}, "e", "Exclude pattern")
+	zsh, bash, err := tryScripts(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(zsh, "'-e[Exclude pattern]:value:'") {
+		t.Errorf("-e borrowed --env's completer in zsh:\n%s", zsh)
+	}
+	if strings.Contains(bash, "_app_dir_files") {
+		t.Errorf("-e borrowed --env's completer in bash:\n%s", bash)
+	}
+}
+
+func TestLoneLongFlagDoesNotBorrowTheShortCompleter(t *testing.T) {
+	root := oneFlagTree(&Config{
+		FlagAliases:    map[string]string{"output": "o"},
+		FlagCompleters: map[string]string{"o": KindFile},
+	}, "output", "Output name")
+	zsh, bash, err := tryScripts(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(zsh, "'--output[Output name]:value:'") {
+		t.Errorf("--output borrowed -o's completer in zsh:\n%s", zsh)
+	}
+	if strings.Contains(bash, "_app_path_files") {
+		t.Errorf("--output borrowed -o's completer in bash:\n%s", bash)
+	}
+}
+
+func TestInjectedHelpFlagsStayOutOfCompletion(t *testing.T) {
+	root, _ := helpTree(&Config{FlagAliases: map[string]string{"help": "H"}}, func(fs *flag.FlagSet) { fs.String("h", "", "Host") })
+	if err := root.Execute([]string{"run", "--out", "x"}); err != nil {
+		t.Fatal(err)
+	}
+	zsh, bash, err := tryScripts(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(zsh, "--help") || strings.Contains(zsh, "-H[") || strings.Contains(bash, "--help") || strings.Contains(bash, " -H") {
+		t.Errorf("injected help flags leaked into completion:\nzsh:\n%s\nbash:\n%s", zsh, bash)
 	}
 }

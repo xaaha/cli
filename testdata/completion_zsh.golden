@@ -133,4 +133,8 @@ _hulak_envs() {
   (( ${#envs} )) && _describe -t envs 'environment' envs
 }
 
-compdef _hulak hulak
+if [[ $zsh_eval_context[-1] == loadautofunc ]]; then
+  _hulak "$@"
+else
+  compdef _hulak hulak
+fi

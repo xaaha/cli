@@ -11,9 +11,11 @@ const (
 	colorReset  = "\033[0m"
 )
 
-// Example is one usage example shown in a command's help.
+// Example is one usage example shown under EXAMPLES in a command's help.
 type Example struct {
-	Command     string
+	// Command is the command line, shown after "$ ".
+	Command string
+	// Description is shown on the line below the command.
 	Description string
 }
 

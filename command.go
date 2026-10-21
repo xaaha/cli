@@ -1,5 +1,3 @@
-// Package cli builds command-line tools from a tree of Commands on top of the
-// standard flag package: dispatch, help, and zsh and bash completion.
 package cli
 
 import (
@@ -12,37 +10,70 @@ import (
 	"strings"
 )
 
-// Command represents a CLI command with optional subcommands and flags.
+// Command is one node in a command tree: a name, optional flags, an optional
+// Run handler and optional subcommands. Build the tree as a literal and call
+// Execute on the root.
 type Command struct {
-	Name        string                    // primary name
-	Aliases     []string                  // alternative names
-	Short       string                    // one-line description for parent's help listing
-	Long        string                    // detailed help shown with --help
-	Hidden      bool                      // omit from help listings (still callable)
-	Examples    []Example                 // usage examples shown under EXAMPLES
-	Flags       *flag.FlagSet             // parsed when this command runs; flags before a subcommand go to it
-	FlagsFirst  bool                      // stop reading flags at the first positional; later words reach Run as typed
-	Args        []ArgDef                  // positional arguments, for help and completion
-	SubCommands []*Command                // nested subcommands
-	Run         func(args []string) error // handler; nil means subcommand-only
-	Config      *Config                   // tree-wide settings; read from the root command only
+	// Name is what the user types to reach this command. On the root it is
+	// the program name used in help and completion scripts.
+	Name string
+	// Aliases are other names that reach this command.
+	Aliases []string
+	// Short is a one-line description shown in the parent's COMMANDS list.
+	// A command without subcommands also shows it in its own help when Long
+	// is empty.
+	Short string
+	// Long is the description shown at the top of this command's help.
+	Long string
+	// Hidden leaves the command out of help and completion. It still runs.
+	Hidden bool
+	// Examples are shown under EXAMPLES in this command's help.
+	Examples []Example
+	// Flags is parsed when this command runs. Flags may appear anywhere
+	// among its arguments, including before the name of a subcommand, in
+	// which case they are passed on to that subcommand.
+	Flags *flag.FlagSet
+	// FlagsFirst stops reading flags at the first positional argument. Every
+	// later word reaches Run as typed, even if it looks like a flag.
+	FlagsFirst bool
+	// Args describes positional arguments for help and completion. It is not
+	// used to validate what the user typed.
+	Args []ArgDef
+	// SubCommands are the commands nested under this one.
+	SubCommands []*Command
+	// Run handles the command. It receives the positional arguments left
+	// after flag parsing. A nil Run makes the command a group that prints
+	// its help when no subcommand is given.
+	Run func(args []string) error
+	// Config holds settings for the whole tree. Only the root's Config is read.
+	Config *Config
 
 	parent *Command
 }
 
 // ArgDef describes a positional argument for help output and completion.
-// Kind selects the value completer: KindFile, KindDir, a key of
-// Config.Completers, or "" for none. Only the first ArgDef's Kind is used.
 type ArgDef struct {
-	Name     string
+	// Name is shown as <Name> in help.
+	Name string
+	// Required marks the argument as required in help.
 	Required bool
-	Desc     string
-	Kind     string
+	// Desc is the description shown under ARGUMENTS.
+	Desc string
+	// Kind selects how the shell completes the argument: KindFile, KindDir,
+	// a key of Config.Completers, or "" for nothing. Only the first ArgDef's
+	// Kind is used.
+	Kind string
 }
 
-// Execute dispatches args to the correct subcommand or runs this command.
-// It first links the tree, adding --help and its short alias to every FlagSet
-// that does not already define them.
+// Execute runs the command tree with args, usually os.Args[1:]. It finds the
+// subcommand named by the first word that is not a flag, parses that
+// command's flags wherever they appear, and calls its Run with the
+// positional arguments that remain.
+//
+// Before dispatching, Execute links the tree and adds --help and its short
+// alias (Config.FlagAliases["help"], "h" by default) to every FlagSet that
+// does not already define them.
+//
 // It returns an error for an invalid FlagAliases["help"], a bad flag or an
 // unknown command, nil when it prints help, and otherwise what Run returns.
 // Flag values persist after a call, so build a fresh tree for each run.
@@ -245,10 +276,10 @@ func (c *Config) FlagPairings(fs *flag.FlagSet) map[string]string {
 	return out
 }
 
-// VisitVisibleFlags calls fn for each visible flag on fs — that is, every
-// flag except hidden ones and long-form aliases paired by FlagPairings (the
-// short form pulls the long form in).
-// Same iteration order as flag.FlagSet.VisitAll (alphabetical by name).
+// VisitVisibleFlags calls fn for each visible flag on fs: every flag except
+// hidden ones and the long half of a pair from FlagPairings, which is shown
+// together with its short half. Flags are visited in the order of
+// flag.FlagSet.VisitAll, which is alphabetical by name.
 func (c *Config) VisitVisibleFlags(fs *flag.FlagSet, fn func(*flag.Flag)) {
 	fs.VisitAll(func(f *flag.Flag) {
 		if c.hidden(fs, f.Name) || c.paired(fs, f.Name, c.FlagAliases[f.Name]) {
@@ -258,22 +289,15 @@ func (c *Config) VisitVisibleFlags(fs *flag.FlagSet, fn func(*flag.Flag)) {
 	})
 }
 
-// FindSubcommandIndex scans args for the first non-flag token, skipping
-// flags and (where determinable from cmd.Flags) their values. Returns:
+// FindSubcommandIndex finds the first word in args that is not a flag or a
+// flag's value. It returns that word's index as both values when the word
+// names a subcommand of cmd, -1 and the index when it does not, and -1, -1
+// when args holds only flags.
 //
-//   - matchIdx ≥ 0  : args[matchIdx] resolves to a subcommand of cmd.
-//   - matchIdx == -1, firstNonFlag ≥ 0 : a positional was found but it
-//     isn't a subcommand (typo).
-//   - both -1       : args contains only flags / is empty.
-//
-// Flag-value pairing rules:
-//   - `--name=value` inlines the value — the next arg is not consumed.
-//   - Bool flags (per the flag.Value IsBoolFlag contract) take no value.
-//   - Anything else is assumed to consume the next arg as its value.
-//   - "--" ends the scan with no match; a lone "-" is a positional.
-//
-// This is the dispatch-level analogue of the iterative flag-anywhere parsing
-// in Execute: ordering between flags and the verb is not significant.
+// A flag is taken to consume the next word as its value unless it is written
+// as --name=value or cmd.Flags defines it as a bool flag (its flag.Value has
+// IsBoolFlag returning true). A "--" ends the scan with no match. A lone "-"
+// is a positional word.
 func (cmd *Command) FindSubcommandIndex(args []string) (matchIdx, firstNonFlag int) {
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -308,73 +332,127 @@ func (cmd *Command) FindSubcommandIndex(args []string) (matchIdx, firstNonFlag i
 }
 
 // PrintHelp prints the command's help to Config.Out in a style similar to gh CLI.
+// A command with visible subcommands lists them and ends with a LEARN MORE
+// hint. A command without them shows its Long or Short description and a
+// USAGE line built from its path, its visible flags and its Args.
 // A subcommand reads the root's Config once Execute or a completion writer has
 // linked the tree; before that it acts as its own root.
 func (cmd *Command) PrintHelp() {
 	cfg := cmd.EffectiveConfig()
-	w := cfg.Out
 	color := cfg.useColor()
-	if cmd.Long != "" {
-		fmt.Fprintln(w, cmd.Long)
-		fmt.Fprintln(w)
+	subs := cmd.VisibleSubs()
+	var blocks []string
+	block := func(write func(w io.Writer)) {
+		var b strings.Builder
+		write(&b)
+		if b.Len() > 0 {
+			blocks = append(blocks, b.String())
+		}
 	}
 
-	if subs := cmd.VisibleSubs(); len(subs) > 0 {
-		printSectionHeader(w, color, "COMMANDS")
-		var entries []*helpEntry
-		for _, sub := range subs {
-			name := sub.Name
-			if len(sub.Aliases) > 0 {
-				name += " (" + strings.Join(sub.Aliases, ", ") + ")"
-			}
-			entries = append(entries, &helpEntry{
-				Command:     name,
-				Description: sub.Short,
-			})
-		}
-		// Alphabetical so users can scan; registration order is meaningless
-		// to readers. Sort by primary name (everything before the first
-		// space, i.e. before the "(alias)" suffix).
-		slices.SortFunc(entries, func(a, b *helpEntry) int {
-			return strings.Compare(primaryName(a.Command), primaryName(b.Command))
+	desc := cmd.Long
+	if desc == "" && len(subs) == 0 {
+		desc = cmd.Short
+	}
+	if desc != "" {
+		block(func(w io.Writer) { fmt.Fprintln(w, desc) })
+	}
+
+	if len(subs) == 0 {
+		block(func(w io.Writer) {
+			printSectionHeader(w, color, "USAGE")
+			fmt.Fprintf(w, "  %s\n", cmd.usage(cfg))
 		})
-		_ = writeHelpEntries(w, entries)
-		fmt.Fprintln(w)
+	} else {
+		block(func(w io.Writer) { printCommands(w, color, subs) })
 	}
 
 	if cmd.Flags != nil {
-		printFlags(w, cfg, color, cmd.Flags)
+		block(func(w io.Writer) { printFlags(w, cfg, color, cmd.Flags) })
 	}
 
 	if len(cmd.Args) > 0 {
-		printSectionHeader(w, color, "ARGUMENTS")
-		var entries []*helpEntry
-		for _, a := range cmd.Args {
-			name := "<" + a.Name + ">"
-			desc := a.Desc
-			if a.Required {
-				desc += " (required)"
-			}
-			entries = append(entries, &helpEntry{
-				Command:     name,
-				Description: desc,
-			})
-		}
-		_ = writeHelpEntries(w, entries)
-		fmt.Fprintln(w)
+		block(func(w io.Writer) { printArgs(w, color, cmd.Args) })
 	}
 
 	if len(cmd.Examples) > 0 {
-		printSectionHeader(w, color, "EXAMPLES")
-		for _, ex := range cmd.Examples {
-			fmt.Fprintf(w, "  $ %s\n", ex.Command)
-			fmt.Fprintf(w, "    %s\n", ex.Description)
-		}
-		fmt.Fprintln(w)
+		block(func(w io.Writer) {
+			printSectionHeader(w, color, "EXAMPLES")
+			for _, ex := range cmd.Examples {
+				fmt.Fprintf(w, "  $ %s\n", ex.Command)
+				fmt.Fprintf(w, "    %s\n", ex.Description)
+			}
+		})
 	}
 
-	printSectionHeader(w, color, "LEARN MORE")
-	fmt.Fprintf(w, "  Use `%s <command> --help` for more information about a command.\n", cmd.root().Name)
+	if len(subs) > 0 {
+		block(func(w io.Writer) {
+			printSectionHeader(w, color, "LEARN MORE")
+			fmt.Fprintf(w, "  Use `%s <command> --help` for more information about a command.\n", cmd.root().Name)
+		})
+	}
+
+	fmt.Fprint(cfg.Out, strings.Join(blocks, "\n"))
+}
+
+func (cmd *Command) usage(cfg *Config) string {
+	parts := []string{cmd.path()}
+	if cmd.Flags != nil && hasVisibleFlags(cfg, cmd.Flags) {
+		parts = append(parts, "[flags]")
+	}
+	for _, a := range cmd.Args {
+		if a.Required {
+			parts = append(parts, "<"+a.Name+">")
+		} else {
+			parts = append(parts, "[<"+a.Name+">]")
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func printCommands(w io.Writer, color bool, subs []*Command) {
+	printSectionHeader(w, color, "COMMANDS")
+	var entries []*helpEntry
+	for _, sub := range subs {
+		name := sub.Name
+		if len(sub.Aliases) > 0 {
+			name += " (" + strings.Join(sub.Aliases, ", ") + ")"
+		}
+		entries = append(entries, &helpEntry{
+			Command:     name,
+			Description: sub.Short,
+		})
+	}
+	// Alphabetical so users can scan; registration order is meaningless
+	// to readers. Sort by primary name (everything before the first
+	// space, i.e. before the "(alias)" suffix).
+	slices.SortFunc(entries, func(a, b *helpEntry) int {
+		return strings.Compare(primaryName(a.Command), primaryName(b.Command))
+	})
+	_ = writeHelpEntries(w, entries)
+}
+
+func printArgs(w io.Writer, color bool, args []ArgDef) {
+	printSectionHeader(w, color, "ARGUMENTS")
+	var entries []*helpEntry
+	for _, a := range args {
+		name := "<" + a.Name + ">"
+		desc := a.Desc
+		if a.Required {
+			desc += " (required)"
+		}
+		entries = append(entries, &helpEntry{
+			Command:     name,
+			Description: desc,
+		})
+	}
+	_ = writeHelpEntries(w, entries)
+}
+
+func hasVisibleFlags(cfg *Config, fs *flag.FlagSet) bool {
+	visible := false
+	cfg.VisitVisibleFlags(fs, func(*flag.Flag) { visible = true })
+	return visible
 }
 
 // printFlags renders the FLAGS section, merging short/long aliases onto one
@@ -382,9 +460,7 @@ func (cmd *Command) PrintHelp() {
 func printFlags(w io.Writer, cfg *Config, color bool, fs *flag.FlagSet) {
 	longFor := cfg.FlagPairings(fs)
 
-	hasVisible := false
-	cfg.VisitVisibleFlags(fs, func(*flag.Flag) { hasVisible = true })
-	if !hasVisible {
+	if !hasVisibleFlags(cfg, fs) {
 		return
 	}
 
@@ -408,7 +484,6 @@ func printFlags(w io.Writer, cfg *Config, color bool, fs *flag.FlagSet) {
 		}
 		fmt.Fprintf(w, "    \t%s\n", usage)
 	})
-	fmt.Fprintln(w)
 }
 
 func typeHint(v flag.Value) string {

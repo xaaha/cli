@@ -41,7 +41,7 @@ func executeOutput(t *testing.T, args ...string) string {
 	return out
 }
 
-func TestD9GoldenOutput(t *testing.T) {
+func TestGoldenOutput(t *testing.T) {
 	cases := []struct {
 		name string
 		got  func(t *testing.T) string
@@ -53,6 +53,14 @@ func TestD9GoldenOutput(t *testing.T) {
 		{"error_unknown_command", func(t *testing.T) string { return executeOutput(t, "bogus") }},
 		{"error_bad_flag", func(t *testing.T) string { return executeOutput(t, "run", "--nope") }},
 		{"error_bad_flag_nested", func(t *testing.T) string { return executeOutput(t, "secrets", "keys", "set", "--nope") }},
+		{"help_hello", func(t *testing.T) string {
+			var b bytes.Buffer
+			hello := &Command{Name: "hello", Short: "Say hello", Config: &Config{Out: &b}, Run: func([]string) error { return nil }}
+			if err := hello.Execute([]string{"--help"}); err != nil {
+				t.Fatal(err)
+			}
+			return b.String()
+		}},
 		{"completion_zsh", func(t *testing.T) string {
 			var b bytes.Buffer
 			if err := WriteZshCompletion(&b, fixtureTree()); err != nil {
