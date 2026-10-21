@@ -303,7 +303,11 @@ func ExampleWriteZshCompletion() {
 	//   _describe -t commands 'completion subcommand' subs
 	// }
 	//
-	// compdef _app app
+	// if [[ $zsh_eval_context[-1] == loadautofunc ]]; then
+	//   _app "$@"
+	// else
+	//   compdef _app app
+	// fi
 }
 
 func ExampleWriteBashCompletion() {

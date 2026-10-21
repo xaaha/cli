@@ -68,7 +68,11 @@ func WriteZshCompletion(out io.Writer, root *Command) error {
 			p("")
 		}
 	}
-	p("compdef %s %s", fn, name)
+	p("if [[ $zsh_eval_context[-1] == loadautofunc ]]; then")
+	p("  %s \"$@\"", fn)
+	p("else")
+	p("  compdef %s %s", fn, name)
+	p("fi")
 	return w.err
 }
 

@@ -2,9 +2,14 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"flag"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestZshFunctionNamesMustNotCollide(t *testing.T) {
@@ -133,4 +138,44 @@ func TestZshFlagsFirstStopsCompletingFlagsAfterTheFirstPositional(t *testing.T) 
 		t.Errorf("zsh say completer does not stop at the first positional:\n%s", zsh)
 	}
 	checkSyntax(t, "zsh", zsh)
+}
+
+func TestZshFirstTabCompletesAfterFpathInstall(t *testing.T) {
+	zshBin := shellPath(t, "zsh")
+	root := &Command{Name: "app", SubCommands: []*Command{{Name: "greet", Short: "Say hello", Run: func([]string) error { return nil }}}}
+	var script bytes.Buffer
+	if err := WriteZshCompletion(&script, root); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "fn"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "fn", "_app"), script.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	harness := `
+zmodload zsh/zpty || exit 2
+zpty z "HOME=$1 zsh -f -i"
+zpty -w z "PS1='%% '; fpath=($1/fn \$fpath); autoload -Uz compinit; compinit -u -d $1/zcompdump; print READY"
+zpty -r -m z line '*READY*' || exit 3
+zpty -w -n z $'app gr\t'
+out=
+for i in {1..50}; do
+  zpty -r -t z chunk && out+=$chunk
+  [[ $out == *greet* ]] && break
+  sleep 0.1
+done
+zpty -d z
+print -r -- $out
+`
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, zshBin, "-f", "-c", harness, "_", dir).CombinedOutput()
+	if err != nil {
+		t.Fatalf("zsh harness: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "app greet") {
+		t.Errorf("first TAB after an fpath install did not complete greet:\n%q", out)
+	}
 }
