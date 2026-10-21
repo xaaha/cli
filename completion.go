@@ -286,7 +286,8 @@ func flagKind(cfg *Config, fs *flag.FlagSet, name string) string {
 }
 
 func isBoolFlag(f *flag.Flag) bool {
-	return f.DefValue == "true" || f.DefValue == "false"
+	bf, ok := f.Value.(interface{ IsBoolFlag() bool })
+	return ok && bf.IsBoolFlag()
 }
 
 // --- zsh ---

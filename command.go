@@ -196,7 +196,7 @@ func endsFlags(fs *flag.FlagSet, args []string) bool {
 			continue
 		}
 		if f := fs.Lookup(name); f != nil {
-			if bf, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && bf.IsBoolFlag() {
+			if isBoolFlag(f) {
 				continue
 			}
 		}
@@ -286,7 +286,7 @@ func (cmd *Command) FindSubcommandIndex(args []string) (matchIdx, firstNonFlag i
 		}
 		if cmd.Flags != nil {
 			if f := cmd.Flags.Lookup(name); f != nil {
-				if bf, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && bf.IsBoolFlag() {
+				if isBoolFlag(f) {
 					continue
 				}
 			}
@@ -387,7 +387,7 @@ func printFlags(w io.Writer, cfg *Config, color bool, fs *flag.FlagSet) {
 		}
 
 		// Show type hint for non-bool flags using the flag's actual type
-		if f.DefValue != "false" && f.DefValue != "true" {
+		if !isBoolFlag(f) {
 			typeName := fmt.Sprintf("%T", f.Value)
 			// flag.Value wraps types as *flag.stringValue, *flag.intValue, etc.
 			// Extract the underlying type name from the wrapper
