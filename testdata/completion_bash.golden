@@ -46,6 +46,17 @@ _hulak_is_path() {
   return 1
 }
 
+_hulak_empty_after() {
+  local line=$COMP_LINE k
+  [[ -n $line ]] || return 1
+  for (( k = 0; k <= $1; k++ )); do
+    line=${line#"${line%%[![:space:]]*}"}
+    [[ $line == "${COMP_WORDS[k]}"* ]] || return 1
+    line=${line#"${COMP_WORDS[k]}"}
+  done
+  [[ -z $line || $line == [[:space:]]* ]]
+}
+
 _hulak_after_dashes() {
   case "$1" in
     hulak:run) _hulak_yaml_files "$2" ;;
@@ -62,7 +73,7 @@ _hulak() {
     if [[ $w == -- ]]; then dashes=1; break; fi
     if [[ $w == -?* ]]; then
       if [[ ${COMP_WORDS[i+1]} == = ]]; then
-        if [[ $COMP_LINE == *"$w= "* ]]; then ((i+=2)); else ((i+=3)); fi
+        if _hulak_empty_after $((i+1)); then ((i+=2)); else ((i+=3)); fi
         continue
       fi
       _hulak_takes_value "$w" && ((i++))
