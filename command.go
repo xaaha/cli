@@ -234,13 +234,14 @@ func (cmd *Command) FindSubcommandIndex(args []string) (matchIdx, firstNonFlag i
 func (cmd *Command) PrintHelp() {
 	cfg := cmd.EffectiveConfig()
 	w := cfg.Out
+	color := cfg.useColor()
 	if cmd.Long != "" {
 		fmt.Fprintln(w, cmd.Long)
 		fmt.Fprintln(w)
 	}
 
 	if subs := cmd.VisibleSubs(); len(subs) > 0 {
-		printSectionHeader(w, "COMMANDS")
+		printSectionHeader(w, color, "COMMANDS")
 		var entries []*helpEntry
 		for _, sub := range subs {
 			name := sub.Name
@@ -263,11 +264,11 @@ func (cmd *Command) PrintHelp() {
 	}
 
 	if cmd.Flags != nil {
-		printFlags(w, cfg, cmd.Flags)
+		printFlags(w, cfg, color, cmd.Flags)
 	}
 
 	if len(cmd.Args) > 0 {
-		printSectionHeader(w, "ARGUMENTS")
+		printSectionHeader(w, color, "ARGUMENTS")
 		var entries []*helpEntry
 		for _, a := range cmd.Args {
 			name := "<" + a.Name + ">"
@@ -285,7 +286,7 @@ func (cmd *Command) PrintHelp() {
 	}
 
 	if len(cmd.Examples) > 0 {
-		printSectionHeader(w, "EXAMPLES")
+		printSectionHeader(w, color, "EXAMPLES")
 		for _, ex := range cmd.Examples {
 			fmt.Fprintf(w, "  $ %s\n", ex.Command)
 			fmt.Fprintf(w, "    %s\n", ex.Description)
@@ -293,13 +294,13 @@ func (cmd *Command) PrintHelp() {
 		fmt.Fprintln(w)
 	}
 
-	printSectionHeader(w, "LEARN MORE")
+	printSectionHeader(w, color, "LEARN MORE")
 	fmt.Fprintf(w, "  Use `%s <command> --help` for more information about a command.\n", cmd.root().Name)
 }
 
 // printFlags renders the FLAGS section, merging short/long aliases onto one
 // line (e.g. "-fp, --file-path  string") and skipping hidden flags.
-func printFlags(w io.Writer, cfg *Config, fs *flag.FlagSet) {
+func printFlags(w io.Writer, cfg *Config, color bool, fs *flag.FlagSet) {
 	longFor := cfg.FlagPairings(fs)
 
 	hasVisible := false
@@ -308,7 +309,7 @@ func printFlags(w io.Writer, cfg *Config, fs *flag.FlagSet) {
 		return
 	}
 
-	printSectionHeader(w, "FLAGS")
+	printSectionHeader(w, color, "FLAGS")
 	cfg.VisitVisibleFlags(fs, func(f *flag.Flag) {
 		// Build flag name: "-fp, --file-path" or just "-debug"
 		label := "  -" + f.Name

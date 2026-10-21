@@ -19,6 +19,43 @@ type Config struct {
 	Out io.Writer
 	// Err receives diagnostics. Default: os.Stderr.
 	Err io.Writer
+	// Color controls ANSI colour in help. Default: ColorAuto.
+	Color ColorMode
+}
+
+// ColorMode selects when help output uses ANSI colour.
+type ColorMode int
+
+const (
+	// ColorAuto colours only when Out is a terminal and NO_COLOR is unset.
+	ColorAuto ColorMode = iota
+	// ColorAlways colours regardless of the writer.
+	ColorAlways
+	// ColorNever never colours.
+	ColorNever
+)
+
+func (c *Config) useColor() bool {
+	return colorEnabled(c.Color, func() bool { return isTerminal(c.Out) })
+}
+
+func colorEnabled(mode ColorMode, terminal func() bool) bool {
+	switch mode {
+	case ColorAlways:
+		return true
+	case ColorNever:
+		return false
+	}
+	return os.Getenv("NO_COLOR") == "" && terminal()
+}
+
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // EffectiveConfig returns the root command's Config with defaults filled in.

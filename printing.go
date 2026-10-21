@@ -17,7 +17,11 @@ type Example struct {
 	Description string
 }
 
-func printSectionHeader(w io.Writer, msg string) {
+func printSectionHeader(w io.Writer, color bool, msg string) {
+	if !color {
+		fmt.Fprintln(w, msg)
+		return
+	}
 	fmt.Fprintf(w, "%s%s%s\n", colorYellow, msg, colorReset)
 }
 

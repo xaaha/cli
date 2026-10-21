@@ -16,6 +16,7 @@ func hulakConfig() *Config {
 			"out":         "o",
 		},
 		HiddenFlags: map[string]bool{"h": true, "v": true},
+		Color:       ColorAlways,
 		PathFlags: map[string]bool{
 			"out": true, "o": true,
 			"file-path": true, "fp": true,
