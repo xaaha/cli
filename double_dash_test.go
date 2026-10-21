@@ -31,6 +31,8 @@ func TestReviewAKDoubleDashAsAFlagValueIsNotTheTerminator(t *testing.T) {
 		{[]string{"leaf", "--env", "--", "foo", "--verbose"}, "--", true, []string{"foo"}},
 		{[]string{"leaf", "a", "--", "-x", "-y"}, "", false, []string{"a", "-x", "-y"}},
 		{[]string{"leaf", "--env=--", "a", "--", "--verbose"}, "--", false, []string{"a", "--verbose"}},
+		{[]string{"leaf", "--verbose", "--", "a", "-x"}, "", true, []string{"a", "-x"}},
+		{[]string{"leaf", "-", "x", "--", "-verbose"}, "", false, []string{"-", "x", "-verbose"}},
 	}
 	for _, tc := range cases {
 		fs := flag.NewFlagSet("leaf", flag.ContinueOnError)
