@@ -153,6 +153,15 @@ func WriteBashCompletion(out io.Writer, root *Command) error {
 	p("  esac")
 	p("}")
 	p("")
+	if chains := flagsFirstChains(root, []string{name}); len(chains) > 0 {
+		p("%s_flags_first() {", fn)
+		p("  case \"$1\" in")
+		p("    %s) return 0 ;;", strings.Join(chains, "|"))
+		p("  esac")
+		p("  return 1")
+		p("}")
+		p("")
+	}
 	p("%s() {", fn)
 	p("  local cur=\"${COMP_WORDS[COMP_CWORD]}\" prev=\"${COMP_WORDS[COMP_CWORD-1]}\" chain=%s i=1 dashes=0 path=1", name)
 	p("  while (( i < COMP_CWORD )); do")
@@ -171,6 +180,9 @@ func WriteBashCompletion(out io.Writer, root *Command) error {
 	p("    ((i++))")
 	p("  done")
 	p("  if (( dashes )); then %s_after_dashes \"$chain\" \"$cur\"; return; fi", fn)
+	if len(flagsFirstChains(root, []string{name})) > 0 {
+		p("  if (( ! path )) && %s_flags_first \"$chain\"; then %s_after_dashes \"$chain\" \"$cur\"; return; fi", fn, fn)
+	}
 	p("  [[ $prev == =* ]] && ! %s_empty_after $((COMP_CWORD-1)) && prev=${COMP_WORDS[COMP_CWORD-2]}", fn)
 	p("  if %s_takes_value \"$prev\"; then %s_complete_value \"$prev\" \"$cur\"; return; fi", fn, fn)
 	p("  case \"$chain\" in")
@@ -365,7 +377,7 @@ func emitZshCmd(p func(string, ...any), cfg *Config, cmd *Command, fn string) {
 		if len(specs) == 0 {
 			return // nothing to complete — skip the function entirely
 		}
-		emitZshArgs(p, fn, specs)
+		emitZshArgs(p, fn, specs, cmd.FlagsFirst)
 		return
 	}
 
@@ -430,9 +442,13 @@ func zshSubHasCompleter(cfg *Config, sub *Command) bool {
 	return len(zshFlagSpecs(cfg, sub)) > 0 || zshPositionalSpec(cfg, sub) != ""
 }
 
-func emitZshArgs(p func(string, ...any), fn string, specs []string) {
+func emitZshArgs(p func(string, ...any), fn string, specs []string, flagsFirst bool) {
 	p("%s() {", fn)
-	p("  _arguments \\")
+	if flagsFirst {
+		p("  _arguments -A '-*' \\")
+	} else {
+		p("  _arguments \\")
+	}
 	for i, s := range specs {
 		tail := " \\"
 		if i == len(specs)-1 {
@@ -634,6 +650,23 @@ func bashComplete(cfg *Config, fn, kind, word string) string {
 	default:
 		return cfg.Completers[kind].Bash(word)
 	}
+}
+
+func flagsFirstChains(cmd *Command, patterns []string) []string {
+	var out []string
+	if cmd.FlagsFirst {
+		out = append(out, patterns...)
+	}
+	for _, sub := range cmd.VisibleSubs() {
+		next := make([]string, 0, len(patterns)*len(allNames(sub)))
+		for _, base := range patterns {
+			for _, name := range allNames(sub) {
+				next = append(next, base+":"+name)
+			}
+		}
+		out = append(out, flagsFirstChains(sub, next)...)
+	}
+	return out
 }
 
 func bashEmitPositionalCases(p func(string, ...any), cfg *Config, fn string, cmd *Command, patterns []string) {
