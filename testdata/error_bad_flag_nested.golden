@@ -1,2 +1,2 @@
 error: flag provided but not defined: -nope
-See 'hulak set --help' for usage
+See 'hulak secrets keys set --help' for usage

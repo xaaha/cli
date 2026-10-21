@@ -63,6 +63,8 @@ type Command struct {
 	Args        []ArgDef                  // positional arg descriptions (for help only)
 	SubCommands []*Command                // nested subcommands
 	Run         func(args []string) error // handler; nil means subcommand-only
+
+	parent *Command
 }
 
 // ArgDef describes a positional argument for help output and completion.
@@ -99,6 +101,7 @@ func (cmd *Command) Execute(args []string) error {
 	if len(cmd.SubCommands) > 0 {
 		if idx, firstNonFlag := cmd.FindSubcommandIndex(args); idx >= 0 {
 			sub := cmd.FindSub(args[idx])
+			sub.parent = cmd
 			rest := append(append([]string(nil), args[:idx]...), args[idx+1:]...)
 			return sub.Execute(rest)
 		} else if firstNonFlag >= 0 {
@@ -133,7 +136,7 @@ func (cmd *Command) Execute(args []string) error {
 		remaining := args
 		for {
 			if err := cmd.Flags.Parse(remaining); err != nil {
-				return fmt.Errorf("%s\nSee 'hulak %s --help' for usage", err, cmd.Name)
+				return fmt.Errorf("%s\nSee '%s --help' for usage", err, cmd.path())
 			}
 			if helpFlag {
 				cmd.PrintHelp()
@@ -154,6 +157,21 @@ func (cmd *Command) Execute(args []string) error {
 	}
 
 	return cmd.Run(args)
+}
+
+func (cmd *Command) root() *Command {
+	r := cmd
+	for r.parent != nil {
+		r = r.parent
+	}
+	return r
+}
+
+func (cmd *Command) path() string {
+	if cmd.parent == nil {
+		return cmd.Name
+	}
+	return cmd.parent.path() + " " + cmd.Name
 }
 
 // FindSub returns the subcommand matching name by Name or Aliases, or nil.
@@ -312,7 +330,7 @@ func (cmd *Command) PrintHelp() {
 	}
 
 	printSectionHeader("LEARN MORE")
-	fmt.Println("  Use `hulak <command> --help` for more information about a command.")
+	fmt.Printf("  Use `%s <command> --help` for more information about a command.\n", cmd.root().Name)
 }
 
 // printFlags renders the FLAGS section, merging short/long aliases onto one
