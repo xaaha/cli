@@ -136,19 +136,27 @@ func WriteBashCompletion(out io.Writer, root *Command) error {
 	p("  return 1")
 	p("}")
 	p("")
+	p("%s_after_dashes() {", fn)
+	p("  case \"$1\" in")
+	bashEmitPositionalCases(p, cfg, fn, root, []string{name})
+	p("    *) COMPREPLY=() ;;")
+	p("  esac")
+	p("}")
+	p("")
 	p("%s() {", fn)
-	p("  local cur=\"${COMP_WORDS[COMP_CWORD]}\" prev=\"${COMP_WORDS[COMP_CWORD-1]}\" chain=%s i=1", name)
-	p("  if %s_takes_value \"$prev\"; then %s_complete_value \"$prev\" \"$cur\"; return; fi", fn, fn)
+	p("  local cur=\"${COMP_WORDS[COMP_CWORD]}\" prev=\"${COMP_WORDS[COMP_CWORD-1]}\" chain=%s i=1 dashes=0", name)
 	p("  while (( i < COMP_CWORD )); do")
 	p("    local w=\"${COMP_WORDS[i]}\"")
 	p("    if [[ -z $w ]]; then ((i++)); continue; fi")
-	p("    [[ $w == -- ]] && break")
+	p("    if [[ $w == -- ]]; then dashes=1; break; fi")
 	p("    if [[ $w == -?* ]]; then")
 	p("      %s_takes_value \"$w\" && ((i++))", fn)
 	p("      ((i++)); continue")
 	p("    fi")
 	p("    if %s_is_path \"$chain:$w\"; then chain+=:$w; ((i++)); else break; fi", fn)
 	p("  done")
+	p("  if (( dashes )); then %s_after_dashes \"$chain\" \"$cur\"; return; fi", fn)
+	p("  if %s_takes_value \"$prev\"; then %s_complete_value \"$prev\" \"$cur\"; return; fi", fn, fn)
 	p("  case \"$chain\" in")
 	bashEmitCases(p, cfg, fn, root, []string{name})
 	p("    *) COMPREPLY=() ;;")
@@ -609,6 +617,21 @@ func bashComplete(cfg *Config, fn, kind, word string) string {
 		return fn + "_dir_files " + word
 	default:
 		return cfg.Completers[kind].Bash(word)
+	}
+}
+
+func bashEmitPositionalCases(p func(string, ...any), cfg *Config, fn string, cmd *Command, patterns []string) {
+	if kind := argKind(cmd); kind != "" {
+		p("    %s) %s ;;", strings.Join(patterns, "|"), bashComplete(cfg, fn, kind, `"$2"`))
+	}
+	for _, sub := range cmd.VisibleSubs() {
+		next := make([]string, 0, len(patterns)*len(allNames(sub)))
+		for _, base := range patterns {
+			for _, name := range allNames(sub) {
+				next = append(next, base+":"+name)
+			}
+		}
+		bashEmitPositionalCases(p, cfg, fn, sub, next)
 	}
 }
 

@@ -52,7 +52,9 @@ printf '%s\n' "${COMPREPLY[@]}" | sort | tr '\n' ' '
 		{"skips a flag value, then yaml files", []string{"hulak", "run", "--timeout", "5", ""}, "a.yaml sub "},
 		{"flag value is not taken as a subcommand", []string{"hulak", "--env", "keys", "secrets", ""}, "keys list "},
 		{"flag value completer", []string{"hulak", "run", "--out", "no"}, "notes.txt "},
-		{"-- stops the command walk", []string{"hulak", "--", "secrets", ""}, "--debug --env --environment --file-path --fp --help completion env import init run secrets version "},
+		{"after -- the root completes nothing", []string{"hulak", "--", "secrets", ""}, " "},
+		{"after -- only the command's positional completer runs", []string{"hulak", "run", "--", ""}, "a.yaml sub "},
+		{"after -- a flag-looking word takes no value", []string{"hulak", "run", "--", "--out", ""}, "a.yaml sub "},
 		{"a lone - is not a flag", []string{"hulak", "-", "secrets", ""}, "--debug --env --environment --file-path --fp --help completion env import init run secrets version "},
 	}
 	for _, tc := range cases {
