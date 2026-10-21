@@ -370,7 +370,7 @@ func zshPositionalSpec(cfg *Config, cmd *Command) string {
 		return "'*:directory:_files -/'"
 	default:
 		c := cfg.Completers[kind]
-		return "'*:" + zshEscLabel(c.Label) + ":" + c.Zsh + "'"
+		return "'*:" + zshEscLabel(c.Label) + ":" + zshEscQuote(c.Zsh) + "'"
 	}
 }
 
@@ -437,7 +437,7 @@ func zshAction(cfg *Config, isBool bool, valKind string) string {
 		return ":directory:_files -/"
 	default:
 		c := cfg.Completers[valKind]
-		return ":" + zshEscLabel(c.Label) + ":" + c.Zsh
+		return ":" + zshEscLabel(c.Label) + ":" + zshEscQuote(c.Zsh)
 	}
 }
 
@@ -447,6 +447,8 @@ func zshDesc(name, short string) string {
 	first = strings.ReplaceAll(first, ":", `\:`)
 	return fmt.Sprintf("'%s:%s'", name, first)
 }
+
+func zshEscQuote(s string) string { return strings.ReplaceAll(s, "'", `'\''`) }
 
 func zshEscLabel(s string) string {
 	for _, pair := range [][2]string{{"\\", `\\`}, {"'", `'\''`}, {":", `\:`}} {
