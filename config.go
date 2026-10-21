@@ -14,8 +14,9 @@ type Config struct {
 	// as "-h, --help". Starts with help->h and version->v.
 	FlagAliases map[string]string
 	// HiddenFlags are left out of help and completion; an entry set to false
-	// shows a flag. Unless listed, the help flags added when the tree is linked are hidden, and
-	// so is the short help or version flag on a command with its long pair.
+	// shows a flag. Unless listed, the help flags added when the tree is
+	// linked are hidden, and so is the short help or version flag on a
+	// command with its long pair.
 	HiddenFlags map[string]bool
 	// FlagCompleters maps a flag name to the completion kind of its value:
 	// KindFile, KindDir, or a key of Completers.
