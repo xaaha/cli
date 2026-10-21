@@ -21,6 +21,7 @@ type Command struct {
 	Hidden      bool                      // omit from help listings (still callable)
 	Examples    []Example                 // usage examples shown under EXAMPLES
 	Flags       *flag.FlagSet             // parsed when this command runs; flags before a subcommand go to it
+	FlagsFirst  bool                      // stop reading flags at the first positional; later words reach Run as typed
 	Args        []ArgDef                  // positional arguments, for help and completion
 	SubCommands []*Command                // nested subcommands
 	Run         func(args []string) error // handler; nil means subcommand-only
@@ -146,6 +147,10 @@ func (cmd *Command) execute(args []string) error {
 				return nil
 			}
 			if cmd.Flags.NArg() == 0 {
+				break
+			}
+			if cmd.FlagsFirst {
+				positionals = append(positionals, cmd.Flags.Args()...)
 				break
 			}
 			if endsFlags(cmd.Flags, remaining) {
