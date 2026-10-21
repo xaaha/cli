@@ -52,7 +52,7 @@ func TestReviewBLabelIsEscapedForZsh(t *testing.T) {
 			Completers: map[string]Completer{"env": {
 				Label: "user's env: name",
 				Zsh:   "_app_envs",
-				Bash:  func(w string) string { return "COMPREPLY=()" },
+				Bash:  func(string) string { return "COMPREPLY=()" },
 			}},
 		},
 		SubCommands: []*Command{{Name: "go", Flags: fs, Run: func([]string) error { return nil }}},
