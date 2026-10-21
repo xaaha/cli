@@ -187,7 +187,7 @@ func (c *Config) FlagPairings(fs *flag.FlagSet) map[string]string {
 // Same iteration order as flag.FlagSet.VisitAll (alphabetical by name).
 func (c *Config) VisitVisibleFlags(fs *flag.FlagSet, fn func(*flag.Flag)) {
 	fs.VisitAll(func(f *flag.Flag) {
-		if c.HiddenFlags[f.Name] || c.FlagAliases[f.Name] != "" {
+		if short := c.FlagAliases[f.Name]; c.HiddenFlags[f.Name] || (short != "" && fs.Lookup(short) != nil) {
 			return
 		}
 		fn(f)
