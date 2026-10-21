@@ -18,6 +18,9 @@ func TestReviewKZshFunctionNamesMustNotCollide(t *testing.T) {
 		"child named subs":    group("app", leaf("subs"), leaf("other")),
 		"dash and underscore": group("app", leaf("a-b"), leaf("a_b")),
 		"across levels":       group("app", group("x", leaf("y_z")), group("x_y", leaf("z"))),
+		"positional-only leaf": group("app",
+			&Command{Name: "a-b", Args: []ArgDef{{Name: "f", Kind: KindFile}}, Run: func([]string) error { return nil }},
+			leaf("a_b")),
 	}
 	for name, root := range cases {
 		t.Run(name, func(t *testing.T) {
