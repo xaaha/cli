@@ -273,7 +273,10 @@ func (cmd *Command) FindSubcommandIndex(args []string) (matchIdx, firstNonFlag i
 		if a == "" {
 			continue
 		}
-		if a[0] != '-' {
+		if a == "--" {
+			return -1, -1
+		}
+		if a[0] != '-' || a == "-" {
 			if cmd.FindSub(a) != nil {
 				return i, i
 			}
