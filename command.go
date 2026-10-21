@@ -25,8 +25,7 @@ type Command struct {
 	Run         func(args []string) error // handler; nil means subcommand-only
 	Config      *Config                   // tree-wide settings; read from the root command only
 
-	parent        *Command
-	helpRequested bool
+	parent *Command
 }
 
 // ArgDef describes a positional argument for help output and completion.
@@ -62,7 +61,7 @@ func (cmd *Command) addHelpFlags() {
 	}
 	for _, name := range []string{"help", cmd.EffectiveConfig().FlagAliases["help"]} {
 		if name != "" && cmd.Flags.Lookup(name) == nil {
-			cmd.Flags.Var(&helpFlag{&cmd.helpRequested}, name, "Show help for this command")
+			cmd.Flags.Var(&helpFlag{}, name, "Show help for this command")
 		}
 	}
 }
@@ -103,7 +102,10 @@ func (cmd *Command) execute(args []string) error {
 
 	// No subcommand matched — parse flags and run
 	if cmd.Flags != nil {
-		cmd.helpRequested = false
+		helpFlags := cmd.injectedHelpFlags()
+		for _, h := range helpFlags {
+			h.on = false
+		}
 
 		// Suppress Go's default usage dump so we can show our own errors
 		cmd.Flags.Usage = func() {}
@@ -119,7 +121,7 @@ func (cmd *Command) execute(args []string) error {
 			if err := cmd.Flags.Parse(remaining); err != nil {
 				return fmt.Errorf("%s\nSee '%s --help' for usage", err, cmd.path())
 			}
-			if cmd.helpRequested {
+			if slices.ContainsFunc(helpFlags, func(h *helpFlag) bool { return h.on }) {
 				cmd.PrintHelp()
 				return nil
 			}
@@ -375,22 +377,29 @@ func (cmd *Command) isHelpArg(arg string) bool {
 	return cmd.Flags == nil || injected(cmd.Flags, name)
 }
 
-type helpFlag struct{ requested *bool }
+type helpFlag struct{ on bool }
 
-func (h *helpFlag) String() string {
-	if h == nil || h.requested == nil {
-		return "false"
-	}
-	return strconv.FormatBool(*h.requested)
-}
+func (h *helpFlag) String() string { return strconv.FormatBool(h != nil && h.on) }
 
 func (h *helpFlag) Set(s string) error {
 	v, err := strconv.ParseBool(s)
 	if err != nil {
 		return err
 	}
-	*h.requested = v
+	h.on = v
 	return nil
+}
+
+func (cmd *Command) injectedHelpFlags() []*helpFlag {
+	var out []*helpFlag
+	for _, name := range []string{"help", cmd.EffectiveConfig().FlagAliases["help"]} {
+		if f := cmd.Flags.Lookup(name); name != "" && f != nil {
+			if h, ok := f.Value.(*helpFlag); ok {
+				out = append(out, h)
+			}
+		}
+	}
+	return out
 }
 
 func (h *helpFlag) IsBoolFlag() bool { return true }
