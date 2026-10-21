@@ -39,6 +39,7 @@ type ArgDef struct {
 }
 
 // Execute dispatches args to the correct subcommand or runs this command.
+// It first links the tree, adding --help and its short alias to every FlagSet.
 // Flag values persist after a call, so build a fresh tree for each run.
 func (cmd *Command) Execute(args []string) error {
 	if cmd.parent == nil {
@@ -250,8 +251,8 @@ func (cmd *Command) FindSubcommandIndex(args []string) (matchIdx, firstNonFlag i
 }
 
 // PrintHelp prints the command's help to Config.Out in a style similar to gh CLI.
-// A subcommand reads the root's Config once Execute or a completion writer
-// has run on the root; before that it acts as its own root.
+// A subcommand reads the root's Config, and lists help flags, once Execute or
+// a completion writer has linked the tree; before that it acts as its own root.
 func (cmd *Command) PrintHelp() {
 	cfg := cmd.EffectiveConfig()
 	w := cfg.Out
