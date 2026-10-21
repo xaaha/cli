@@ -28,8 +28,8 @@ type Command struct {
 }
 
 // ArgDef describes a positional argument for help output and completion.
-// Kind selects the value completer: "yaml" (run/gql), "file" (any path), or
-// "" (no completion — for opaque values like secret keys or env names).
+// Kind selects the value completer: KindFile, KindDir, a key of
+// Config.Completers, or "" for none.
 type ArgDef struct {
 	Name     string
 	Required bool
@@ -69,8 +69,8 @@ func (cmd *Command) execute(args []string) error {
 	}
 
 	// Try to match a subcommand. Scan past leading flags so verb-after-flag
-	// (`secrets keys --env prod list`) dispatches the same as verb-first
-	// (`secrets keys list --env prod`). This mirrors the iterative flag-anywhere
+	// (`app keys --env prod list`) dispatches the same as verb-first
+	// (`app keys list --env prod`). This mirrors the iterative flag-anywhere
 	// parsing further down — order of flags vs verb is not significant.
 	if len(cmd.SubCommands) > 0 {
 		if idx, firstNonFlag := cmd.FindSubcommandIndex(args); idx >= 0 {
@@ -157,9 +157,8 @@ func (cmd *Command) FindSub(name string) *Command {
 	return nil
 }
 
-// VisibleSubs returns subcommands that aren't hidden. Help, man,
-// and completion generators all skip hidden commands the same way; go
-// through this helper so the rule lives in one place.
+// VisibleSubs returns subcommands that aren't hidden. Help and completion
+// skip hidden commands through this one helper.
 func (cmd *Command) VisibleSubs() []*Command {
 	out := make([]*Command, 0, len(cmd.SubCommands))
 	for _, sub := range cmd.SubCommands {
@@ -171,8 +170,7 @@ func (cmd *Command) VisibleSubs() []*Command {
 }
 
 // FlagPairings returns a short->long map for flags where both forms are
-// registered on fs. Renderers (help, man, markdown, completion) use this
-// to merge `-fp, --file-path` onto one line.
+// registered on fs. Help and completion use it to show `-o, --out` on one line.
 func (c *Config) FlagPairings(fs *flag.FlagSet) map[string]string {
 	out := make(map[string]string)
 	for long, short := range c.FlagAliases {
@@ -312,7 +310,7 @@ func (cmd *Command) PrintHelp() {
 }
 
 // printFlags renders the FLAGS section, merging short/long aliases onto one
-// line (e.g. "-fp, --file-path  string") and skipping hidden flags.
+// line (e.g. "-o, --out string") and skipping hidden flags.
 func printFlags(w io.Writer, cfg *Config, color bool, fs *flag.FlagSet) {
 	longFor := cfg.FlagPairings(fs)
 
@@ -324,7 +322,7 @@ func printFlags(w io.Writer, cfg *Config, color bool, fs *flag.FlagSet) {
 
 	printSectionHeader(w, color, "FLAGS")
 	cfg.VisitVisibleFlags(fs, func(f *flag.Flag) {
-		// Build flag name: "-fp, --file-path" or just "-debug"
+		// Build flag name: "-o, --out" or just "-debug"
 		label := "  -" + f.Name
 		if long, ok := longFor[f.Name]; ok {
 			label += ", --" + long
