@@ -5,6 +5,7 @@ Extracted from [hulak](https://github.com/xaaha/hulak).
 
 - Nested subcommands with aliases, and help at every level
 - Flags in any position: `app set KEY --env prod` and `app --env prod set KEY` both work
+- `FlagsFirst` on a command stops reading flags at its first argument, for free-text commands
 - Short and long flag pairs shown on one line (`-o, --out`)
 - zsh and bash completion generated from the same tree
 - No dependencies outside the standard library
