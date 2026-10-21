@@ -196,9 +196,7 @@ func registered(cfg *Config) map[string]bool {
 	return out
 }
 
-// validateTree returns every completion kind the tree refers to. It fails on
-// a kind that is neither built in nor registered, and on a visible name that
-// would need quoting inside a shell script.
+// validateTree returns the completion kinds the tree uses, or an error for an unknown kind or unsafe name.
 func validateTree(cfg *Config, root *Command) (map[string]bool, error) {
 	used := map[string]bool{}
 	check := func(kind, where string) error {
@@ -259,8 +257,7 @@ func validateTree(cfg *Config, root *Command) (map[string]bool, error) {
 
 var shellSafeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 
-// flagKind returns the completion kind for a flag, falling back to the kind
-// registered on the other half of its alias pair when fs has both halves.
+// flagKind falls back to the alias partner's kind only when fs registers both halves.
 func flagKind(cfg *Config, fs *flag.FlagSet, name string) string {
 	if kind := cfg.FlagCompleters[name]; kind != "" {
 		return kind
