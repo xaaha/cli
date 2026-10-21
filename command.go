@@ -145,6 +145,10 @@ func (cmd *Command) execute(args []string) error {
 			if cmd.Flags.NArg() == 0 {
 				break
 			}
+			if consumed := len(remaining) - cmd.Flags.NArg(); consumed > 0 && remaining[consumed-1] == "--" {
+				positionals = append(positionals, cmd.Flags.Args()...)
+				break
+			}
 			positionals = append(positionals, cmd.Flags.Arg(0))
 			remaining = cmd.Flags.Args()[1:]
 		}
