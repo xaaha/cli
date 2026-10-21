@@ -28,3 +28,29 @@ func TestReviewKZshFunctionNamesMustNotCollide(t *testing.T) {
 		})
 	}
 }
+
+func TestReviewUOnlyEmittedFunctionsCanCollide(t *testing.T) {
+	withFlag := flag.NewFlagSet("x_y", flag.ContinueOnError)
+	withFlag.String("out", "", "Out")
+	root := &Command{Name: "app", SubCommands: []*Command{
+		{Name: "x-y", Run: func([]string) error { return nil }},
+		{Name: "x_y", Flags: withFlag, Run: func([]string) error { return nil }},
+	}}
+	if err := WriteZshCompletion(&bytes.Buffer{}, root); err != nil {
+		t.Errorf("x-y emits no zsh function, so nothing collides: %v", err)
+	}
+}
+
+func TestReviewUBashIgnoresZshNameCollisions(t *testing.T) {
+	a := flag.NewFlagSet("a-b", flag.ContinueOnError)
+	a.String("x", "", "x")
+	b := flag.NewFlagSet("a_b", flag.ContinueOnError)
+	b.String("y", "", "y")
+	root := &Command{Name: "app", SubCommands: []*Command{
+		{Name: "a-b", Flags: a, Run: func([]string) error { return nil }},
+		{Name: "a_b", Flags: b, Run: func([]string) error { return nil }},
+	}}
+	if err := WriteBashCompletion(&bytes.Buffer{}, root); err != nil {
+		t.Errorf("bash has no per-command functions: %v", err)
+	}
+}

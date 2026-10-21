@@ -39,7 +39,7 @@ func WriteZshCompletion(out io.Writer, root *Command) error {
 	}
 	name := root.Name
 	fn := "_" + shellFn(name)
-	if err := checkZshNames(root, fn); err != nil {
+	if err := checkZshNames(cfg, root, fn); err != nil {
 		return err
 	}
 	p := func(format string, a ...any) { fmt.Fprintf(w, format+"\n", a...) }
@@ -284,7 +284,7 @@ func isBoolFlag(f *flag.Flag) bool {
 // --- zsh ---
 
 // checkZshNames fails when two commands would define the same zsh function.
-func checkZshNames(root *Command, rootFn string) error {
+func checkZshNames(cfg *Config, root *Command, rootFn string) error {
 	owner := map[string]string{}
 	claim := func(fn, path string) error {
 		if prev, ok := owner[fn]; ok {
@@ -295,8 +295,10 @@ func checkZshNames(root *Command, rootFn string) error {
 	}
 	var walk func(cmd *Command, fn, path string) error
 	walk = func(cmd *Command, fn, path string) error {
-		if err := claim(fn, path); err != nil {
-			return err
+		if cmd == root || zshSubHasCompleter(cfg, cmd) {
+			if err := claim(fn, path); err != nil {
+				return err
+			}
 		}
 		subs := cmd.VisibleSubs()
 		if len(subs) == 0 {
