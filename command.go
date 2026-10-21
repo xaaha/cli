@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -132,6 +133,9 @@ func (cmd *Command) execute(args []string) error {
 		remaining := args
 		for {
 			if err := cmd.Flags.Parse(remaining); err != nil {
+				if errors.Is(err, flag.ErrHelp) {
+					err = errors.New("flag provided but not defined: -h")
+				}
 				return fmt.Errorf("%s\nSee '%s --help' for usage", err, cmd.path())
 			}
 			if slices.ContainsFunc(helpFlags, func(h *helpFlag) bool { return h.on }) {
