@@ -1,7 +1,5 @@
-// Package cli holds the CLI dispatch core: the Command struct, its Execute
-// method, help rendering, and small cross-cutting helpers (RequireVaultProject)
-// shared by every leaf command package. Leaf packages build *Command trees;
-// this package owns parsing and dispatch.
+// Package cli builds command-line tools from a tree of Commands on top of the
+// standard flag package: dispatch, help, and zsh and bash completion.
 package cli
 
 import (
@@ -86,12 +84,12 @@ func (cmd *Command) Execute(args []string) error {
 			cmd.Flags.BoolVar(&helpFlag, "h", false, "Show help for this command")
 		}
 
-		// Suppress Go's default usage dump so we can show hulak-styled errors
+		// Suppress Go's default usage dump so we can show our own errors
 		cmd.Flags.Usage = func() {}
 		cmd.Flags.SetOutput(io.Discard)
 
 		// Iterative parse: stdlib flag.Parse stops at the first non-flag argument,
-		// so `hulak set FOO bar --env prod` would leave '--env prod' unparsed.
+		// so `app set FOO bar --env prod` would leave '--env prod' unparsed.
 		// Loop, peeling off one positional per iteration, until all flags (in any position) are consumed.
 		// After this, args holds only positionals.
 		var positionals []string

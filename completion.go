@@ -210,7 +210,7 @@ func isBoolFlag(f *flag.Flag) bool {
 // --- zsh ---
 
 // emitZshCmd writes the completer for cmd and recurses into its visible
-// subcommands. Function name carries the path (e.g. _hulak_secrets_set).
+// subcommands. Function name carries the path (e.g. _app_secrets_set).
 // Leaf commands with nothing to complete emit no function and no dispatch.
 func emitZshCmd(p func(string, ...any), cfg *Config, cmd *Command, fn string) {
 	subs := cmd.VisibleSubs()
@@ -406,7 +406,7 @@ func zshEscBracket(s string) string {
 // --- bash ---
 
 // bashCtx is the data the bash chain walker needs at runtime: every valid
-// alias-expanded chain ("hulak:secrets:set"), and which flags consume a
+// alias-expanded chain ("app:secrets:set"), and which flags consume a
 // value (so the walker skips that value when chaining). Collected once so
 // the generated script doesn't re-walk the tree on every tab press.
 type bashCtx struct {
