@@ -40,7 +40,8 @@ type ArgDef struct {
 }
 
 // Execute dispatches args to the correct subcommand or runs this command.
-// It first links the tree, adding --help and its short alias to every FlagSet.
+// It first links the tree, adding --help and its short alias to every FlagSet
+// that does not already define them.
 // Flag values persist after a call, so build a fresh tree for each run.
 func (cmd *Command) Execute(args []string) error {
 	if cmd.parent == nil {
