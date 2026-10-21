@@ -104,7 +104,7 @@ func TestD7ScriptsAreValidShell(t *testing.T) {
 		for shell, src := range map[string]string{"zsh": zsh, "bash": bash} {
 			bin, err := exec.LookPath(shell)
 			if err != nil {
-				t.Logf("%s not installed, skipping syntax check", shell)
+				requireShellOnCI(t, shell)
 				continue
 			}
 			path := filepath.Join(t.TempDir(), tree.Name+"."+shell)

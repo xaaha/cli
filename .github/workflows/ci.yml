@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - name: Install zsh for completion syntax checks
+        run: sudo apt-get update && sudo apt-get install -y zsh
       - name: Run tests
         run: go test ./... -race -timeout 120s
   lint:
