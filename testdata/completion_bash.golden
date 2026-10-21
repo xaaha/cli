@@ -61,7 +61,10 @@ _hulak() {
     if [[ -z $w ]]; then ((i++)); continue; fi
     if [[ $w == -- ]]; then dashes=1; break; fi
     if [[ $w == -?* ]]; then
-      if [[ ${COMP_WORDS[i+1]} == = ]]; then ((i+=3)); continue; fi
+      if [[ ${COMP_WORDS[i+1]} == = ]]; then
+        if [[ $COMP_LINE == *"$w= "* ]]; then ((i+=2)); else ((i+=3)); fi
+        continue
+      fi
       _hulak_takes_value "$w" && ((i++))
       ((i++)); continue
     fi
