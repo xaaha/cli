@@ -410,13 +410,11 @@ func (h *helpFlag) Set(s string) error {
 
 func (cmd *Command) injectedHelpFlags() []*helpFlag {
 	var out []*helpFlag
-	for _, name := range []string{"help", cmd.EffectiveConfig().FlagAliases["help"]} {
-		if f := cmd.Flags.Lookup(name); name != "" && f != nil {
-			if h, ok := f.Value.(*helpFlag); ok {
-				out = append(out, h)
-			}
+	cmd.Flags.VisitAll(func(f *flag.Flag) {
+		if h, ok := f.Value.(*helpFlag); ok {
+			out = append(out, h)
 		}
-	}
+	})
 	return out
 }
 
