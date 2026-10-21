@@ -3,9 +3,6 @@ package cli
 import (
 	"bytes"
 	"flag"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -102,18 +99,7 @@ func TestD7ScriptsAreValidShell(t *testing.T) {
 	for _, tree := range []*Command{fixtureTree(), kapiCompletionTree()} {
 		zsh, bash := scripts(t, tree)
 		for shell, src := range map[string]string{"zsh": zsh, "bash": bash} {
-			bin, err := exec.LookPath(shell)
-			if err != nil {
-				requireShellOnCI(t, shell)
-				continue
-			}
-			path := filepath.Join(t.TempDir(), tree.Name+"."+shell)
-			if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			if out, err := exec.Command(bin, "-n", path).CombinedOutput(); err != nil {
-				t.Errorf("%s -n %s: %v\n%s", shell, tree.Name, err, out)
-			}
+			t.Run(tree.Name+"/"+shell, func(t *testing.T) { checkSyntax(t, shell, src) })
 		}
 	}
 }

@@ -31,27 +31,33 @@ func TestReviewADegenerateTreesGiveWorkingScripts(t *testing.T) {
 				t.Errorf("zsh registers _app with compdef but never defines it:\n%s", zsh)
 			}
 			for shell, src := range map[string]string{"zsh": zsh, "bash": bash} {
-				bin, err := exec.LookPath(shell)
-				if err != nil {
-					requireShellOnCI(t, shell)
-					continue
-				}
-				path := filepath.Join(t.TempDir(), "app."+shell)
-				if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
-					t.Fatal(err)
-				}
-				if out, err := exec.Command(bin, "-n", path).CombinedOutput(); err != nil {
-					t.Errorf("%s -n: %v\n%s\n%s", shell, err, out, src)
-				}
+				t.Run(shell, func(t *testing.T) { checkSyntax(t, shell, src) })
 			}
 		})
 	}
 }
 
-func requireShellOnCI(t *testing.T, shell string) {
+func shellPath(t *testing.T, shell string) string {
 	t.Helper()
+	bin, err := exec.LookPath(shell)
+	if err == nil {
+		return bin
+	}
 	if os.Getenv("CI") != "" {
 		t.Fatalf("%s is required on CI for the syntax check", shell)
 	}
-	t.Logf("%s not installed, skipping syntax check", shell)
+	t.Skipf("%s not installed", shell)
+	return ""
+}
+
+func checkSyntax(t *testing.T, shell, src string) {
+	t.Helper()
+	bin := shellPath(t, shell)
+	path := filepath.Join(t.TempDir(), "script."+shell)
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command(bin, "-n", path).CombinedOutput(); err != nil {
+		t.Errorf("%s -n: %v\n%s\n%s", shell, err, out, src)
+	}
 }

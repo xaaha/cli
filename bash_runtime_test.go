@@ -10,11 +10,7 @@ import (
 )
 
 func TestReviewHGeneratedBashFunctionCompletes(t *testing.T) {
-	bashBin, err := exec.LookPath("bash")
-	if err != nil {
-		requireShellOnCI(t, "bash")
-		return
-	}
+	bashBin := shellPath(t, "bash")
 	var script bytes.Buffer
 	if err := WriteBashCompletion(&script, fixtureTree()); err != nil {
 		t.Fatal(err)
@@ -27,6 +23,7 @@ func TestReviewHGeneratedBashFunctionCompletes(t *testing.T) {
 	work := filepath.Join(dir, "work")
 	for _, p := range []string{"work/sub", "work/a.yaml", "work/notes.txt"} {
 		full := filepath.Join(dir, p)
+		var err error
 		if strings.HasSuffix(p, "sub") {
 			err = os.MkdirAll(full, 0o755)
 		} else {

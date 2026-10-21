@@ -3,9 +3,6 @@ package cli
 import (
 	"bytes"
 	"flag"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -64,18 +61,7 @@ func TestReviewBLabelIsEscapedForZsh(t *testing.T) {
 	if !strings.Contains(zsh, `:user'\''s env\: name:_app_envs`) {
 		t.Errorf("label not escaped:\n%s", zsh)
 	}
-	bin, err := exec.LookPath("zsh")
-	if err != nil {
-		requireShellOnCI(t, "zsh")
-		return
-	}
-	path := filepath.Join(t.TempDir(), "app.zsh")
-	if err := os.WriteFile(path, []byte(zsh), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if out, err := exec.Command(bin, "-n", path).CombinedOutput(); err != nil {
-		t.Errorf("zsh -n: %v\n%s", err, out)
-	}
+	checkSyntax(t, "zsh", zsh)
 }
 
 func tryScripts(root *Command) (zsh, bash string, err error) {
