@@ -1,0 +1,21 @@
+Hulak is a file-based API client.
+
+[93mCOMMANDS[0m
+  completion       - Print a shell completion script
+  import           - Import a file
+  init             - Initialize a project
+  run              - Run API request files
+  secrets (env)    - Manage encrypted environment secrets
+  version          - Print the version
+
+[93mFLAGS[0m
+  -debug
+    	Print full request and response details
+  -env, --environment string
+    	Environment file to use (default "global")
+  -fp, --file-path string
+    	Exact path of the request file
+
+[93mLEARN MORE[0m
+  Use `hulak <command> --help` for more information about a command.
+error: unknown command "bogus" for hulak
