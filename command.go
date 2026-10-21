@@ -146,7 +146,7 @@ func (cmd *Command) execute(args []string) error {
 			if cmd.Flags.NArg() == 0 {
 				break
 			}
-			if consumed := len(remaining) - cmd.Flags.NArg(); consumed > 0 && remaining[consumed-1] == "--" {
+			if endsFlags(cmd.Flags, remaining) {
 				positionals = append(positionals, cmd.Flags.Args()...)
 				break
 			}
@@ -177,6 +177,30 @@ func (cmd *Command) path() string {
 		return cmd.Name
 	}
 	return cmd.parent.path() + " " + cmd.Name
+}
+
+// endsFlags reports whether flag.Parse stops args at a "--" rather than at a positional.
+func endsFlags(fs *flag.FlagSet, args []string) bool {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			return true
+		}
+		if len(a) < 2 || a[0] != '-' {
+			return false
+		}
+		name := strings.TrimPrefix(strings.TrimPrefix(a, "-"), "-")
+		if strings.Contains(name, "=") {
+			continue
+		}
+		if f := fs.Lookup(name); f != nil {
+			if bf, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && bf.IsBoolFlag() {
+				continue
+			}
+		}
+		i++
+	}
+	return false
 }
 
 // FindSub returns the subcommand matching name by Name or Aliases, or nil.
