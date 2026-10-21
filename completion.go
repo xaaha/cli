@@ -218,7 +218,7 @@ func validateTree(cfg *Config, root *Command) (map[string]bool, error) {
 					return
 				}
 				if err = name(f.Name, path+" "+dashed(f.Name)); err == nil && !isBoolFlag(f) {
-					err = check(cfg.FlagCompleters[f.Name], path+" "+dashed(f.Name))
+					err = check(flagKind(cfg, f.Name), path+" "+dashed(f.Name))
 				}
 			})
 			if err != nil {
@@ -236,6 +236,23 @@ func validateTree(cfg *Config, root *Command) (map[string]bool, error) {
 }
 
 var shellSafeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+
+// flagKind returns the completion kind for a flag, falling back to the kind
+// registered on the other half of its alias pair.
+func flagKind(cfg *Config, name string) string {
+	if kind := cfg.FlagCompleters[name]; kind != "" {
+		return kind
+	}
+	for long, short := range cfg.FlagAliases {
+		switch name {
+		case long:
+			return cfg.FlagCompleters[short]
+		case short:
+			return cfg.FlagCompleters[long]
+		}
+	}
+	return ""
+}
 
 func isBoolFlag(f *flag.Flag) bool {
 	return f.DefValue == "true" || f.DefValue == "false"
@@ -374,13 +391,10 @@ func zshFlagSpecs(cfg *Config, cmd *Command) []string {
 			usage:   f.Usage,
 			isBool:  isBoolFlag(f),
 			forms:   []string{dashed(f.Name)},
-			valKind: cfg.FlagCompleters[f.Name],
+			valKind: flagKind(cfg, f.Name),
 		}
 		if long, ok := longFor[f.Name]; ok {
 			s.forms = append(s.forms, dashed(long))
-			if kind := cfg.FlagCompleters[long]; kind != "" && s.valKind == "" {
-				s.valKind = kind
-			}
 		}
 		// Sort by ASCII: -- sorts before -, so long form lists first.
 		// Cosmetic only — zsh treats mutex group members as a set.
@@ -476,7 +490,7 @@ func collectBashCtx(cfg *Config, root *Command) bashCtx {
 					return
 				}
 				addForm(ctx.valueFlags, f.Name)
-				if kind := cfg.FlagCompleters[f.Name]; kind != "" {
+				if kind := flagKind(cfg, f.Name); kind != "" {
 					if ctx.kindFlags[kind] == nil {
 						ctx.kindFlags[kind] = map[string]bool{}
 					}
