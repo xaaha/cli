@@ -64,6 +64,8 @@ printf '%s\n' "${COMPREPLY[@]}" | sort | tr '\n' ' '
 		{"a COMP_LINE that does not match the words assumes a value", []string{"hulak", "--env", "=", "prod", "secrets", ""}, "keys list ", "hulak = secrets "},
 		{"a value starting with = after --flag==", []string{"hulak", "--env", "==", "prod", "secrets", ""}, "keys list ", "hulak --env==prod secrets "},
 		{"value after --flag==", []string{"hulak", "run", "--out", "==", "no"}, "notes.txt ", "hulak run --out==no"},
+		{"a space after --flag= starts a new word", []string{"hulak", "--env", "=", ""}, "--debug --env --environment --file-path --fp --help completion env import init run secrets version ", "hulak --env= "},
+		{"a space after --flag== starts a new word", []string{"hulak", "--env", "==", ""}, "--debug --env --environment --file-path --fp --help completion env import init run secrets version ", "hulak --env== "},
 		{"a glob-like word does not act as a pattern", []string{"hulak", "-*", "=", "secrets", ""}, "keys list ", "hulak -*= secrets "},
 		{"an empty value next to a filled one", []string{"hulak", "--fp", "=", "--env", "=", "prod", "secrets", ""}, "keys list ", "hulak --fp= --env=prod secrets "},
 		{"-- after a positional still counts", []string{"hulak", "run", "x", "--", "-"}, " ", ""},

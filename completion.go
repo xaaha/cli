@@ -171,7 +171,7 @@ func WriteBashCompletion(out io.Writer, root *Command) error {
 	p("    ((i++))")
 	p("  done")
 	p("  if (( dashes )); then %s_after_dashes \"$chain\" \"$cur\"; return; fi", fn)
-	p("  [[ $prev == =* ]] && prev=${COMP_WORDS[COMP_CWORD-2]}")
+	p("  [[ $prev == =* ]] && ! %s_empty_after $((COMP_CWORD-1)) && prev=${COMP_WORDS[COMP_CWORD-2]}", fn)
 	p("  if %s_takes_value \"$prev\"; then %s_complete_value \"$prev\" \"$cur\"; return; fi", fn, fn)
 	p("  case \"$chain\" in")
 	bashEmitCases(p, cfg, fn, root, []string{name})
