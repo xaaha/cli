@@ -25,7 +25,8 @@ type Command struct {
 	Run         func(args []string) error // handler; nil means subcommand-only
 	Config      *Config                   // tree-wide settings; read from the root command only
 
-	parent *Command
+	parent        *Command
+	helpRequested bool
 }
 
 // ArgDef describes a positional argument for help output and completion.
@@ -48,9 +49,21 @@ func (cmd *Command) Execute(args []string) error {
 }
 
 func (cmd *Command) link() {
+	cmd.addHelpFlags()
 	for _, sub := range cmd.SubCommands {
 		sub.parent = cmd
 		sub.link()
+	}
+}
+
+func (cmd *Command) addHelpFlags() {
+	if cmd.Flags == nil {
+		return
+	}
+	for _, name := range []string{"help", cmd.EffectiveConfig().FlagAliases["help"]} {
+		if name != "" && cmd.Flags.Lookup(name) == nil {
+			cmd.Flags.Var(&helpFlag{&cmd.helpRequested}, name, "Show help for this command")
+		}
 	}
 }
 
@@ -65,7 +78,7 @@ func (cmd *Command) execute(args []string) error {
 	}
 
 	// Check for help request as first arg
-	if isHelpArg(args[0], cmd.EffectiveConfig().FlagAliases["help"]) {
+	if cmd.isHelpArg(args[0]) {
 		cmd.PrintHelp()
 		return nil
 	}
@@ -90,13 +103,7 @@ func (cmd *Command) execute(args []string) error {
 
 	// No subcommand matched — parse flags and run
 	if cmd.Flags != nil {
-		// Register a help flag so -h/--help works through flag parsing
-		var helpRequested bool
-		for _, name := range []string{"help", cmd.EffectiveConfig().FlagAliases["help"]} {
-			if name != "" && cmd.Flags.Lookup(name) == nil {
-				cmd.Flags.Var(&helpFlag{&helpRequested}, name, "Show help for this command")
-			}
-		}
+		cmd.helpRequested = false
 
 		// Suppress Go's default usage dump so we can show our own errors
 		cmd.Flags.Usage = func() {}
@@ -112,7 +119,7 @@ func (cmd *Command) execute(args []string) error {
 			if err := cmd.Flags.Parse(remaining); err != nil {
 				return fmt.Errorf("%s\nSee '%s --help' for usage", err, cmd.path())
 			}
-			if helpRequested {
+			if cmd.helpRequested {
 				cmd.PrintHelp()
 				return nil
 			}
@@ -357,8 +364,15 @@ func printFlags(w io.Writer, cfg *Config, color bool, fs *flag.FlagSet) {
 }
 
 // isHelpArg returns true if the argument is a help request.
-func isHelpArg(arg, short string) bool {
-	return arg == "help" || arg == "--help" || (short != "" && arg == "-"+short)
+func (cmd *Command) isHelpArg(arg string) bool {
+	if arg == "help" {
+		return true
+	}
+	name := strings.TrimLeft(arg, "-")
+	if name == arg || (name != "help" && name != cmd.EffectiveConfig().FlagAliases["help"]) {
+		return false
+	}
+	return cmd.Flags == nil || injected(cmd.Flags, name)
 }
 
 type helpFlag struct{ requested *bool }
