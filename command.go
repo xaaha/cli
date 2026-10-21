@@ -12,14 +12,14 @@ import (
 
 // Command represents a CLI command with optional subcommands and flags.
 type Command struct {
-	Name        string                    // primary name (e.g. "gql")
-	Aliases     []string                  // alternative names (e.g. "graphql")
+	Name        string                    // primary name
+	Aliases     []string                  // alternative names
 	Short       string                    // one-line description for parent's help listing
 	Long        string                    // detailed help shown with --help
 	Hidden      bool                      // omit from help listings (still callable)
 	Examples    []Example                 // usage examples shown under EXAMPLES
 	Flags       *flag.FlagSet             // scoped flags for this command
-	Args        []ArgDef                  // positional arg descriptions (for help only)
+	Args        []ArgDef                  // positional arguments, for help and completion
 	SubCommands []*Command                // nested subcommands
 	Run         func(args []string) error // handler; nil means subcommand-only
 	Config      *Config                   // tree-wide settings; read from the root command only
