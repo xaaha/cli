@@ -39,7 +39,9 @@ source "$1"
 COMP_LINE=${CLI_TEST_LINE:-}
 COMP_WORDS=("${@:2}")
 COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))
+line=keep k=keep
 _hulak
+[[ $line == keep && $k == keep ]] || echo "LEAKED line=$line k=$k"
 printf '%s\n' "${COMPREPLY[@]}" | sort | tr '\n' ' '
 `
 	cases := []struct {
@@ -59,6 +61,14 @@ printf '%s\n' "${COMPREPLY[@]}" | sort | tr '\n' ' '
 		{"an empty --flag= value does not take the next word", []string{"hulak", "--env", "=", "secrets", ""}, "keys list ", "hulak --env= secrets "},
 		{"a later empty --flag= does not affect an earlier one", []string{"hulak", "--env", "=", "prod", "secrets", "--env", "=", "keys", ""}, "get set ", "hulak --env=prod secrets --env= keys "},
 		{"without COMP_LINE a value after = is assumed", []string{"hulak", "--env", "=", "prod", "secrets", ""}, "keys list ", ""},
+		{"a COMP_LINE that does not match the words assumes a value", []string{"hulak", "--env", "=", "prod", "secrets", ""}, "keys list ", "hulak = secrets "},
+		{"a value starting with = after --flag==", []string{"hulak", "--env", "==", "prod", "secrets", ""}, "keys list ", "hulak --env==prod secrets "},
+		{"value after --flag==", []string{"hulak", "run", "--out", "==", "no"}, "notes.txt ", "hulak run --out==no"},
+		{"a space after --flag= starts a new word", []string{"hulak", "--env", "=", ""}, "--debug --env --environment --file-path --fp --help completion env import init run secrets version ", "hulak --env= "},
+		{"a space after --flag== starts a new word", []string{"hulak", "--env", "==", ""}, "--debug --env --environment --file-path --fp --help completion env import init run secrets version ", "hulak --env== "},
+		{"a quoted value containing = after a bool flag is a positional", []string{"hulak", "--debug", `"a=b"`, "secrets", ""}, "--debug --env --environment --file-path --fp --help completion env import init run secrets version ", `hulak --debug "a=b" secrets `},
+		{"a quoted value containing = right before the cursor is not a separator", []string{"hulak", "--env", `"a=b"`, ""}, "--debug --env --environment --file-path --fp --help completion env import init run secrets version ", ""},
+		{"a glob-like word does not act as a pattern", []string{"hulak", "-*", "=", "secrets", ""}, "keys list ", "hulak -*= secrets "},
 		{"an empty value next to a filled one", []string{"hulak", "--fp", "=", "--env", "=", "prod", "secrets", ""}, "keys list ", "hulak --fp= --env=prod secrets "},
 		{"-- after a positional still counts", []string{"hulak", "run", "x", "--", "-"}, " ", ""},
 		{"after -- the root completes nothing", []string{"hulak", "--", "secrets", ""}, " ", ""},
