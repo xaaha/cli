@@ -2,16 +2,17 @@ package cli
 
 import (
 	"io"
+	"maps"
 	"os"
 )
 
 // Config holds settings for a whole command tree. Set it on the root
-// command; nil fields fall back to the defaults below.
+// command. Nil writers use the defaults below; the two maps add to theirs.
 type Config struct {
 	// FlagAliases maps a long flag name to its short form, shown together
-	// as "-h, --help". Default: help->h, version->v.
+	// as "-h, --help". Always includes help->h and version->v.
 	FlagAliases map[string]string
-	// HiddenFlags are left out of help and completion. Default: h, v.
+	// HiddenFlags are left out of help and completion. Always includes h and v.
 	HiddenFlags map[string]bool
 	// FlagCompleters maps a flag name to the completion kind of its value:
 	// KindFile, KindDir, or a key of Completers.
@@ -61,18 +62,19 @@ func isTerminal(w io.Writer) bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
+func withDefaults[V any](defaults, own map[string]V) map[string]V {
+	maps.Copy(defaults, own)
+	return defaults
+}
+
 // EffectiveConfig returns the root command's Config with defaults filled in.
 func (cmd *Command) EffectiveConfig() *Config {
 	var c Config
 	if root := cmd.root().Config; root != nil {
 		c = *root
 	}
-	if c.FlagAliases == nil {
-		c.FlagAliases = map[string]string{"help": "h", "version": "v"}
-	}
-	if c.HiddenFlags == nil {
-		c.HiddenFlags = map[string]bool{"h": true, "v": true}
-	}
+	c.FlagAliases = withDefaults(map[string]string{"help": "h", "version": "v"}, c.FlagAliases)
+	c.HiddenFlags = withDefaults(map[string]bool{"h": true, "v": true}, c.HiddenFlags)
 	if c.Out == nil {
 		c.Out = os.Stdout
 	}
