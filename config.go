@@ -13,8 +13,9 @@ type Config struct {
 	// FlagAliases maps a long flag name to its short form, shown together
 	// as "-h, --help". Starts with help->h and version->v.
 	FlagAliases map[string]string
-	// HiddenFlags are left out of help and completion. The short help and
-	// version flags are hidden too, on a command that also has the long ones.
+	// HiddenFlags are left out of help and completion; an entry set to false
+	// shows a flag. Unless listed, the help flags Execute adds are hidden, and
+	// so is the short help or version flag on a command with its long pair.
 	HiddenFlags map[string]bool
 	// FlagCompleters maps a flag name to the completion kind of its value:
 	// KindFile, KindDir, or a key of Completers.
@@ -70,16 +71,22 @@ func withDefaults[V any](defaults, own map[string]V) map[string]V {
 }
 
 func (c *Config) hidden(fs *flag.FlagSet, name string) bool {
-	if c.HiddenFlags[name] {
+	if v, ok := c.HiddenFlags[name]; ok {
+		return v
+	}
+	if injected(fs, name) {
 		return true
 	}
 	for _, long := range []string{"help", "version"} {
-		short := c.FlagAliases[long]
-		if name == short && short != "" && fs.Lookup(long) != nil {
+		if short := c.FlagAliases[long]; name == short && c.paired(fs, long, short) {
 			return true
 		}
 	}
 	return false
+}
+
+func (c *Config) paired(fs *flag.FlagSet, long, short string) bool {
+	return short != "" && fs.Lookup(long) != nil && fs.Lookup(short) != nil && injected(fs, long) == injected(fs, short)
 }
 
 // EffectiveConfig returns the root command's Config with defaults filled in.

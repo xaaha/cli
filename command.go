@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -64,7 +65,7 @@ func (cmd *Command) execute(args []string) error {
 	}
 
 	// Check for help request as first arg
-	if isHelpArg(args[0]) {
+	if isHelpArg(args[0], cmd.EffectiveConfig().FlagAliases["help"]) {
 		cmd.PrintHelp()
 		return nil
 	}
@@ -90,12 +91,11 @@ func (cmd *Command) execute(args []string) error {
 	// No subcommand matched — parse flags and run
 	if cmd.Flags != nil {
 		// Register a help flag so -h/--help works through flag parsing
-		var helpFlag bool
-		if cmd.Flags.Lookup("help") == nil {
-			cmd.Flags.BoolVar(&helpFlag, "help", false, "Show help for this command")
-		}
-		if cmd.Flags.Lookup("h") == nil {
-			cmd.Flags.BoolVar(&helpFlag, "h", false, "Show help for this command")
+		var helpRequested bool
+		for _, name := range []string{"help", cmd.EffectiveConfig().FlagAliases["help"]} {
+			if name != "" && cmd.Flags.Lookup(name) == nil {
+				cmd.Flags.Var(&helpFlag{&helpRequested}, name, "Show help for this command")
+			}
 		}
 
 		// Suppress Go's default usage dump so we can show our own errors
@@ -112,7 +112,7 @@ func (cmd *Command) execute(args []string) error {
 			if err := cmd.Flags.Parse(remaining); err != nil {
 				return fmt.Errorf("%s\nSee '%s --help' for usage", err, cmd.path())
 			}
-			if helpFlag {
+			if helpRequested {
 				cmd.PrintHelp()
 				return nil
 			}
@@ -175,7 +175,7 @@ func (cmd *Command) VisibleSubs() []*Command {
 func (c *Config) FlagPairings(fs *flag.FlagSet) map[string]string {
 	out := make(map[string]string)
 	for long, short := range c.FlagAliases {
-		if fs.Lookup(long) != nil && fs.Lookup(short) != nil {
+		if c.paired(fs, long, short) {
 			out[short] = long
 		}
 	}
@@ -188,7 +188,7 @@ func (c *Config) FlagPairings(fs *flag.FlagSet) map[string]string {
 // Same iteration order as flag.FlagSet.VisitAll (alphabetical by name).
 func (c *Config) VisitVisibleFlags(fs *flag.FlagSet, fn func(*flag.Flag)) {
 	fs.VisitAll(func(f *flag.Flag) {
-		if short := c.FlagAliases[f.Name]; c.hidden(fs, f.Name) || (short != "" && fs.Lookup(short) != nil) {
+		if c.hidden(fs, f.Name) || c.paired(fs, f.Name, c.FlagAliases[f.Name]) {
 			return
 		}
 		fn(f)
@@ -357,8 +357,37 @@ func printFlags(w io.Writer, cfg *Config, color bool, fs *flag.FlagSet) {
 }
 
 // isHelpArg returns true if the argument is a help request.
-func isHelpArg(arg string) bool {
-	return arg == "help" || arg == "--help" || arg == "-h"
+func isHelpArg(arg, short string) bool {
+	return arg == "help" || arg == "--help" || (short != "" && arg == "-"+short)
+}
+
+type helpFlag struct{ requested *bool }
+
+func (h *helpFlag) String() string {
+	if h == nil || h.requested == nil {
+		return "false"
+	}
+	return strconv.FormatBool(*h.requested)
+}
+
+func (h *helpFlag) Set(s string) error {
+	v, err := strconv.ParseBool(s)
+	if err != nil {
+		return err
+	}
+	*h.requested = v
+	return nil
+}
+
+func (h *helpFlag) IsBoolFlag() bool { return true }
+
+func injected(fs *flag.FlagSet, name string) bool {
+	f := fs.Lookup(name)
+	if f == nil {
+		return false
+	}
+	_, ok := f.Value.(*helpFlag)
+	return ok
 }
 
 // primaryName strips the "(alias, alias)" suffix from a command label so
