@@ -20,9 +20,11 @@ type Config struct {
 	// command with its long pair.
 	HiddenFlags map[string]bool
 	// FlagCompleters maps a flag name to the completion kind of its value:
-	// KindFile, KindDir, or a key of Completers.
+	// KindFile, KindDir, or a key of Completers. A flag with no entry uses
+	// its FlagAliases partner's entry when its FlagSet defines both halves.
 	FlagCompleters map[string]string
-	// Completers registers app-specific completion kinds by name.
+	// Completers registers app-specific completion kinds by name. A kind the
+	// tree uses needs both Zsh and Bash set, or the completion writers fail.
 	Completers map[string]Completer
 	// Out receives help output. Default: os.Stdout.
 	Out io.Writer
@@ -91,7 +93,10 @@ func (c *Config) paired(fs *flag.FlagSet, long, short string) bool {
 	return short != "" && fs.Lookup(long) != nil && fs.Lookup(short) != nil && injected(fs, long) == injected(fs, short)
 }
 
-// EffectiveConfig returns the root command's Config with defaults filled in.
+// EffectiveConfig returns a copy of the root command's Config with defaults
+// filled in: the help->h and version->v FlagAliases, os.Stdout for Out and
+// os.Stderr for Err. A command reaches its root once Execute or a
+// completion writer has linked the tree.
 func (cmd *Command) EffectiveConfig() *Config {
 	var c Config
 	if root := cmd.root().Config; root != nil {
