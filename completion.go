@@ -234,7 +234,7 @@ func validateTree(cfg *Config, root *Command) (map[string]bool, error) {
 		if cmd.Flags != nil {
 			var err error
 			cmd.Flags.VisitAll(func(f *flag.Flag) {
-				if err != nil || cfg.HiddenFlags[f.Name] {
+				if err != nil || cfg.hidden(cmd.Flags, f.Name) {
 					return
 				}
 				if err = name(f.Name, path+" "+dashed(f.Name)); err == nil && !isBoolFlag(f) {
@@ -543,7 +543,7 @@ func collectBashCtx(cfg *Config, root *Command) bashCtx {
 		ctx.validPaths = append(ctx.validPaths, patterns...)
 		if cmd.Flags != nil {
 			cmd.Flags.VisitAll(func(f *flag.Flag) {
-				if cfg.HiddenFlags[f.Name] || isBoolFlag(f) {
+				if cfg.hidden(cmd.Flags, f.Name) || isBoolFlag(f) {
 					return
 				}
 				addForm(ctx.valueFlags, f.Name)
@@ -611,7 +611,7 @@ func bashEmitCases(p func(string, ...any), cfg *Config, fn string, cmd *Command,
 	}
 	if cmd.Flags != nil {
 		cmd.Flags.VisitAll(func(f *flag.Flag) {
-			if !cfg.HiddenFlags[f.Name] {
+			if !cfg.hidden(cmd.Flags, f.Name) {
 				sugg = append(sugg, dashed(f.Name))
 			}
 		})
