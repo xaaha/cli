@@ -41,6 +41,12 @@ func WriteZshCompletion(w io.Writer, root *Command) error {
 	p("# Generated code. Do not edit by hand.")
 	p("")
 	emitZshCmd(p, cfg, root, fn)
+	if !zshSubHasCompleter(cfg, root) {
+		p("%s() {", fn)
+		p("  return 1")
+		p("}")
+		p("")
+	}
 	for _, kind := range sortedKeys(registered(cfg)) {
 		if funcs := cfg.Completers[kind].ZshFuncs; funcs != "" {
 			fmt.Fprintln(w, funcs)
@@ -82,9 +88,11 @@ func WriteBashCompletion(w io.Writer, root *Command) error {
 		}
 	}
 	p("%s_takes_value() {", fn)
-	p("  case \"$1\" in")
-	p("    %s) return 0 ;;", strings.Join(sortedKeys(ctx.valueFlags), "|"))
-	p("  esac")
+	if len(ctx.valueFlags) > 0 {
+		p("  case \"$1\" in")
+		p("    %s) return 0 ;;", strings.Join(sortedKeys(ctx.valueFlags), "|"))
+		p("  esac")
+	}
 	p("  return 1")
 	p("}")
 	p("")
