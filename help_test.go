@@ -166,6 +166,44 @@ func TestHelpNamesRootProgram(t *testing.T) {
 	}
 }
 
+func TestLeafHelpShowsUsageAndDescription(t *testing.T) {
+	var out bytes.Buffer
+	hello := &Command{Name: "hello", Short: "Say hello", Config: &Config{Out: &out}, Run: func([]string) error { return nil }}
+	if err := hello.Execute([]string{"--help"}); err != nil {
+		t.Fatal(err)
+	}
+	if want := "Say hello\n\nUSAGE\n  hello\n"; out.String() != want {
+		t.Errorf("root leaf help = %q, want %q", out.String(), want)
+	}
+
+	out.Reset()
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	fs.String("out", "", "Out path")
+	root := &Command{Name: "app", Config: &Config{Out: &out}, SubCommands: []*Command{{
+		Name: "run", Short: "Run it", Long: "Run one file.", Flags: fs,
+		Args: []ArgDef{{Name: "path", Required: true}, {Name: "more"}},
+		Run:  func([]string) error { return nil },
+	}}}
+	if err := root.Execute([]string{"run", "--help"}); err != nil {
+		t.Fatal(err)
+	}
+	help := out.String()
+	for _, want := range []string{"Run one file.\n\nUSAGE\n  app run [flags] <path> [<more>]\n\nFLAGS\n", "ARGUMENTS"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("leaf help missing %q:\n%s", want, help)
+		}
+	}
+	if strings.Contains(help, "Run it") || strings.Contains(help, "LEARN MORE") {
+		t.Errorf("leaf help shows Short over Long or a LEARN MORE hint:\n%s", help)
+	}
+
+	out.Reset()
+	root.PrintHelp()
+	if strings.Contains(out.String(), "USAGE") || !strings.Contains(out.String(), "LEARN MORE") {
+		t.Errorf("group help changed:\n%s", out.String())
+	}
+}
+
 func TestPrintHelpAfterExecuteUsesTheRoot(t *testing.T) {
 	var out bytes.Buffer
 	root, _, leaf := linkTree(&out)
@@ -173,7 +211,7 @@ func TestPrintHelpAfterExecuteUsesTheRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	leaf.PrintHelp()
-	if !strings.Contains(out.String(), "Use `app <command> --help`") {
+	if !strings.Contains(out.String(), "USAGE\n  app grp leaf\n") {
 		t.Errorf("leaf help did not use the root's name and writer: %q", out.String())
 	}
 }
@@ -270,7 +308,7 @@ func TestOnlyExactHelpArgumentsAreHelp(t *testing.T) {
 			if err := root.Execute([]string{"cat", tc.arg}); err != nil {
 				t.Fatal(err)
 			}
-			if tc.wantHelp && (ran || !strings.Contains(out.String(), "LEARN MORE")) {
+			if tc.wantHelp && (ran || !strings.Contains(out.String(), "USAGE")) {
 				t.Errorf("want help, ran=%v", ran)
 			}
 			if !tc.wantHelp && (!ran || !slices.Equal(got, []string{tc.arg})) {
@@ -296,7 +334,7 @@ func TestHelpWordWorksAtEveryLevel(t *testing.T) {
 		if err := root.Execute(args); err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
-		if ran || !strings.Contains(out.String(), "LEARN MORE") {
+		if ran || !strings.Contains(out.String(), "USAGE") && !strings.Contains(out.String(), "LEARN MORE") {
 			t.Errorf("%v: ran=%v, want help", args, ran)
 		}
 	}
@@ -313,7 +351,7 @@ func TestHelpAfterAPositionalStillShowsHelp(t *testing.T) {
 		if err := root.Execute(args); err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
-		if ran || !strings.Contains(out.String(), "LEARN MORE") {
+		if ran || !strings.Contains(out.String(), "USAGE") {
 			t.Errorf("%v: ran=%v, want help", args, ran)
 		}
 	}
@@ -460,7 +498,7 @@ func TestCustomShortHelpAliasReplacesH(t *testing.T) {
 	if err := bare.Execute([]string{"run", "-H"}); err != nil {
 		t.Fatal(err)
 	}
-	if ran || !strings.Contains(out.String(), "LEARN MORE") {
+	if ran || !strings.Contains(out.String(), "USAGE") {
 		t.Errorf("-H first on a flagless leaf: ran=%v help=%q", ran, out.String())
 	}
 }
@@ -513,8 +551,8 @@ func TestSharedFlagSetStillHonoursHelp(t *testing.T) {
 	if err := root.Execute([]string{"b", "x", "--help"}); err != nil {
 		t.Fatal(err)
 	}
-	if ran != "" || !strings.Contains(out.String(), "LEARN MORE") {
-		t.Errorf("ran=%q, help printed=%v", ran, strings.Contains(out.String(), "LEARN MORE"))
+	if ran != "" || !strings.Contains(out.String(), "USAGE") {
+		t.Errorf("ran=%q, help printed=%v", ran, strings.Contains(out.String(), "USAGE"))
 	}
 }
 
@@ -550,7 +588,7 @@ func TestParallelTreesKeepSeparateHelpState(t *testing.T) {
 				if err := root.Execute([]string{"run", "--out", "x", "--help"}); err != nil {
 					t.Fatal(err)
 				}
-				if !strings.Contains(out.String(), "LEARN MORE") {
+				if !strings.Contains(out.String(), "USAGE") {
 					t.Fatal("help not printed")
 				}
 			}
@@ -572,7 +610,7 @@ func TestHelpFlagsAddedByAnotherTreeStillCount(t *testing.T) {
 	if err := mk("H", &out, &ranB).Execute([]string{"leaf", "x", "-h"}); err != nil {
 		t.Fatal(err)
 	}
-	if ranB || !strings.Contains(out.String(), "LEARN MORE") {
+	if ranB || !strings.Contains(out.String(), "USAGE") {
 		t.Errorf("-h added by the other tree was ignored: ran=%v", ranB)
 	}
 }

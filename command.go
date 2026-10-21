@@ -308,73 +308,127 @@ func (cmd *Command) FindSubcommandIndex(args []string) (matchIdx, firstNonFlag i
 }
 
 // PrintHelp prints the command's help to Config.Out in a style similar to gh CLI.
+// A command with visible subcommands lists them and ends with a LEARN MORE
+// hint. A command without them shows its Long or Short description and a
+// USAGE line built from its path, its visible flags and its Args.
 // A subcommand reads the root's Config once Execute or a completion writer has
 // linked the tree; before that it acts as its own root.
 func (cmd *Command) PrintHelp() {
 	cfg := cmd.EffectiveConfig()
-	w := cfg.Out
 	color := cfg.useColor()
-	if cmd.Long != "" {
-		fmt.Fprintln(w, cmd.Long)
-		fmt.Fprintln(w)
+	subs := cmd.VisibleSubs()
+	var blocks []string
+	block := func(write func(w io.Writer)) {
+		var b strings.Builder
+		write(&b)
+		if b.Len() > 0 {
+			blocks = append(blocks, b.String())
+		}
 	}
 
-	if subs := cmd.VisibleSubs(); len(subs) > 0 {
-		printSectionHeader(w, color, "COMMANDS")
-		var entries []*helpEntry
-		for _, sub := range subs {
-			name := sub.Name
-			if len(sub.Aliases) > 0 {
-				name += " (" + strings.Join(sub.Aliases, ", ") + ")"
-			}
-			entries = append(entries, &helpEntry{
-				Command:     name,
-				Description: sub.Short,
-			})
-		}
-		// Alphabetical so users can scan; registration order is meaningless
-		// to readers. Sort by primary name (everything before the first
-		// space, i.e. before the "(alias)" suffix).
-		slices.SortFunc(entries, func(a, b *helpEntry) int {
-			return strings.Compare(primaryName(a.Command), primaryName(b.Command))
+	desc := cmd.Long
+	if desc == "" && len(subs) == 0 {
+		desc = cmd.Short
+	}
+	if desc != "" {
+		block(func(w io.Writer) { fmt.Fprintln(w, desc) })
+	}
+
+	if len(subs) == 0 {
+		block(func(w io.Writer) {
+			printSectionHeader(w, color, "USAGE")
+			fmt.Fprintf(w, "  %s\n", cmd.usage(cfg))
 		})
-		_ = writeHelpEntries(w, entries)
-		fmt.Fprintln(w)
+	} else {
+		block(func(w io.Writer) { printCommands(w, color, subs) })
 	}
 
 	if cmd.Flags != nil {
-		printFlags(w, cfg, color, cmd.Flags)
+		block(func(w io.Writer) { printFlags(w, cfg, color, cmd.Flags) })
 	}
 
 	if len(cmd.Args) > 0 {
-		printSectionHeader(w, color, "ARGUMENTS")
-		var entries []*helpEntry
-		for _, a := range cmd.Args {
-			name := "<" + a.Name + ">"
-			desc := a.Desc
-			if a.Required {
-				desc += " (required)"
-			}
-			entries = append(entries, &helpEntry{
-				Command:     name,
-				Description: desc,
-			})
-		}
-		_ = writeHelpEntries(w, entries)
-		fmt.Fprintln(w)
+		block(func(w io.Writer) { printArgs(w, color, cmd.Args) })
 	}
 
 	if len(cmd.Examples) > 0 {
-		printSectionHeader(w, color, "EXAMPLES")
-		for _, ex := range cmd.Examples {
-			fmt.Fprintf(w, "  $ %s\n", ex.Command)
-			fmt.Fprintf(w, "    %s\n", ex.Description)
-		}
-		fmt.Fprintln(w)
+		block(func(w io.Writer) {
+			printSectionHeader(w, color, "EXAMPLES")
+			for _, ex := range cmd.Examples {
+				fmt.Fprintf(w, "  $ %s\n", ex.Command)
+				fmt.Fprintf(w, "    %s\n", ex.Description)
+			}
+		})
 	}
 
-	printSectionHeader(w, color, "LEARN MORE")
-	fmt.Fprintf(w, "  Use `%s <command> --help` for more information about a command.\n", cmd.root().Name)
+	if len(subs) > 0 {
+		block(func(w io.Writer) {
+			printSectionHeader(w, color, "LEARN MORE")
+			fmt.Fprintf(w, "  Use `%s <command> --help` for more information about a command.\n", cmd.root().Name)
+		})
+	}
+
+	fmt.Fprint(cfg.Out, strings.Join(blocks, "\n"))
+}
+
+func (cmd *Command) usage(cfg *Config) string {
+	parts := []string{cmd.path()}
+	if cmd.Flags != nil && hasVisibleFlags(cfg, cmd.Flags) {
+		parts = append(parts, "[flags]")
+	}
+	for _, a := range cmd.Args {
+		if a.Required {
+			parts = append(parts, "<"+a.Name+">")
+		} else {
+			parts = append(parts, "[<"+a.Name+">]")
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func printCommands(w io.Writer, color bool, subs []*Command) {
+	printSectionHeader(w, color, "COMMANDS")
+	var entries []*helpEntry
+	for _, sub := range subs {
+		name := sub.Name
+		if len(sub.Aliases) > 0 {
+			name += " (" + strings.Join(sub.Aliases, ", ") + ")"
+		}
+		entries = append(entries, &helpEntry{
+			Command:     name,
+			Description: sub.Short,
+		})
+	}
+	// Alphabetical so users can scan; registration order is meaningless
+	// to readers. Sort by primary name (everything before the first
+	// space, i.e. before the "(alias)" suffix).
+	slices.SortFunc(entries, func(a, b *helpEntry) int {
+		return strings.Compare(primaryName(a.Command), primaryName(b.Command))
+	})
+	_ = writeHelpEntries(w, entries)
+}
+
+func printArgs(w io.Writer, color bool, args []ArgDef) {
+	printSectionHeader(w, color, "ARGUMENTS")
+	var entries []*helpEntry
+	for _, a := range args {
+		name := "<" + a.Name + ">"
+		desc := a.Desc
+		if a.Required {
+			desc += " (required)"
+		}
+		entries = append(entries, &helpEntry{
+			Command:     name,
+			Description: desc,
+		})
+	}
+	_ = writeHelpEntries(w, entries)
+}
+
+func hasVisibleFlags(cfg *Config, fs *flag.FlagSet) bool {
+	visible := false
+	cfg.VisitVisibleFlags(fs, func(*flag.Flag) { visible = true })
+	return visible
 }
 
 // printFlags renders the FLAGS section, merging short/long aliases onto one
@@ -382,9 +436,7 @@ func (cmd *Command) PrintHelp() {
 func printFlags(w io.Writer, cfg *Config, color bool, fs *flag.FlagSet) {
 	longFor := cfg.FlagPairings(fs)
 
-	hasVisible := false
-	cfg.VisitVisibleFlags(fs, func(*flag.Flag) { hasVisible = true })
-	if !hasVisible {
+	if !hasVisibleFlags(cfg, fs) {
 		return
 	}
 
@@ -408,7 +460,6 @@ func printFlags(w io.Writer, cfg *Config, color bool, fs *flag.FlagSet) {
 		}
 		fmt.Fprintf(w, "    \t%s\n", usage)
 	})
-	fmt.Fprintln(w)
 }
 
 func typeHint(v flag.Value) string {

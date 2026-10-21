@@ -164,7 +164,7 @@ func TestFlagsFirstStillShowsHelpAndRejectsBadFlags(t *testing.T) {
 	if err := flagsFirstTree(&got, &on, &out).Execute([]string{"say", "--on", "x", "--help"}); err != nil {
 		t.Fatal(err)
 	}
-	if got != nil || !strings.Contains(out.String(), "LEARN MORE") {
+	if got != nil || !strings.Contains(out.String(), "USAGE") {
 		t.Errorf("want help before any positional, ran with %v", got)
 	}
 	err := flagsFirstTree(&got, &on, io.Discard).Execute([]string{"say", "--bogus", "page.html"})
