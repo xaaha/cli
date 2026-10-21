@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -31,7 +32,7 @@ type Completer struct {
 // WriteZshCompletion writes a zsh completion script for the tree under root.
 func WriteZshCompletion(w io.Writer, root *Command) error {
 	cfg := root.EffectiveConfig()
-	if _, err := usedKinds(cfg, root); err != nil {
+	if _, err := validateTree(cfg, root); err != nil {
 		return err
 	}
 	name := root.Name
@@ -60,7 +61,7 @@ func WriteZshCompletion(w io.Writer, root *Command) error {
 // WriteBashCompletion writes a bash completion script for the tree under root.
 func WriteBashCompletion(w io.Writer, root *Command) error {
 	cfg := root.EffectiveConfig()
-	used, err := usedKinds(cfg, root)
+	used, err := validateTree(cfg, root)
 	if err != nil {
 		return err
 	}
@@ -171,9 +172,10 @@ func registered(cfg *Config) map[string]bool {
 	return out
 }
 
-// usedKinds returns every completion kind the tree refers to, and fails on a
-// kind that is neither built in nor registered in cfg.Completers.
-func usedKinds(cfg *Config, root *Command) (map[string]bool, error) {
+// validateTree returns every completion kind the tree refers to. It fails on
+// a kind that is neither built in nor registered, and on a visible name that
+// would need quoting inside a shell script.
+func validateTree(cfg *Config, root *Command) (map[string]bool, error) {
 	used := map[string]bool{}
 	check := func(kind, where string) error {
 		if kind == "" {
@@ -185,15 +187,29 @@ func usedKinds(cfg *Config, root *Command) (map[string]bool, error) {
 		used[kind] = true
 		return nil
 	}
+	name := func(n, where string) error {
+		if !shellSafeName.MatchString(n) {
+			return fmt.Errorf("%s: name %q cannot be used in a completion script", where, n)
+		}
+		return nil
+	}
 	var walk func(cmd *Command, path string) error
 	walk = func(cmd *Command, path string) error {
+		for _, n := range allNames(cmd) {
+			if err := name(n, path); err != nil {
+				return err
+			}
+		}
 		if err := check(argKind(cmd), path); err != nil {
 			return err
 		}
 		if cmd.Flags != nil {
 			var err error
 			cmd.Flags.VisitAll(func(f *flag.Flag) {
-				if err == nil && !cfg.HiddenFlags[f.Name] && !isBoolFlag(f) {
+				if err != nil || cfg.HiddenFlags[f.Name] {
+					return
+				}
+				if err = name(f.Name, path+" "+dashed(f.Name)); err == nil && !isBoolFlag(f) {
 					err = check(cfg.FlagCompleters[f.Name], path+" "+dashed(f.Name))
 				}
 			})
@@ -210,6 +226,8 @@ func usedKinds(cfg *Config, root *Command) (map[string]bool, error) {
 	}
 	return used, walk(root, root.Name)
 }
+
+var shellSafeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 
 func isBoolFlag(f *flag.Flag) bool {
 	return f.DefValue == "true" || f.DefValue == "false"
@@ -320,7 +338,7 @@ func zshPositionalSpec(cfg *Config, cmd *Command) string {
 		return "'*:directory:_files -/'"
 	default:
 		c := cfg.Completers[kind]
-		return "'*:" + c.Label + ":" + c.Zsh + "'"
+		return "'*:" + zshEscLabel(c.Label) + ":" + c.Zsh + "'"
 	}
 }
 
@@ -390,7 +408,7 @@ func zshAction(cfg *Config, isBool bool, valKind string) string {
 		return ":directory:_files -/"
 	default:
 		c := cfg.Completers[valKind]
-		return ":" + c.Label + ":" + c.Zsh
+		return ":" + zshEscLabel(c.Label) + ":" + c.Zsh
 	}
 }
 
@@ -399,6 +417,13 @@ func zshDesc(name, short string) string {
 	first = strings.ReplaceAll(first, "'", `'\''`)
 	first = strings.ReplaceAll(first, ":", `\:`)
 	return fmt.Sprintf("'%s:%s'", name, first)
+}
+
+func zshEscLabel(s string) string {
+	for _, pair := range [][2]string{{"\\", `\\`}, {"'", `'\''`}, {":", `\:`}} {
+		s = strings.ReplaceAll(s, pair[0], pair[1])
+	}
+	return s
 }
 
 func zshEscBracket(s string) string {
