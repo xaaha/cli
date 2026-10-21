@@ -30,7 +30,8 @@ type Completer struct {
 }
 
 // WriteZshCompletion writes a zsh completion script for the tree under root.
-func WriteZshCompletion(w io.Writer, root *Command) error {
+func WriteZshCompletion(out io.Writer, root *Command) error {
+	w := &errWriter{w: out}
 	root.link()
 	cfg := root.EffectiveConfig()
 	if _, err := validateTree(cfg, root); err != nil {
@@ -59,14 +60,15 @@ func WriteZshCompletion(w io.Writer, root *Command) error {
 		}
 	}
 	p("compdef %s %s", fn, name)
-	return nil
+	return w.err
 }
 
 // WriteBashCompletion writes a bash completion script for the tree under root.
 // Bash keeps one tree-wide list of flags that take a value, so a flag name
 // that is a bool in one command and takes a value in another is treated as
 // taking a value everywhere.
-func WriteBashCompletion(w io.Writer, root *Command) error {
+func WriteBashCompletion(out io.Writer, root *Command) error {
+	w := &errWriter{w: out}
 	root.link()
 	cfg := root.EffectiveConfig()
 	used, err := validateTree(cfg, root)
@@ -145,7 +147,21 @@ func WriteBashCompletion(w io.Writer, root *Command) error {
 	p("}")
 	p("")
 	p("complete -F %s %s", fn, name)
-	return nil
+	return w.err
+}
+
+type errWriter struct {
+	w   io.Writer
+	err error
+}
+
+func (e *errWriter) Write(p []byte) (int, error) {
+	if e.err != nil {
+		return 0, e.err
+	}
+	n, err := e.w.Write(p)
+	e.err = err
+	return n, err
 }
 
 // --- shared helpers ---
