@@ -12,6 +12,11 @@ All notable changes to this module are listed here. The format follows
   description and a USAGE line, and no longer ends with a LEARN MORE hint
   about subcommands it does not have.
 
+### Fixed
+
+- The zsh script completes on the first TAB when compinit autoloads it from a
+  directory in `fpath`. Before, the first TAB only loaded the script.
+
 ### Added
 
 - Runnable examples on pkg.go.dev, a fuller package doc and README.
@@ -32,10 +37,6 @@ All notable changes to this module are listed here. The format follows
   `==` and `value`, as a value for `--flag`.
 - After `--flag=` followed by a space, bash completion completes a new word
   instead of the flag's value.
-- A quoted value containing `=` is no longer taken as a `--flag=value`
-  separator by bash completion.
-- The bash completion helper keeps its variables local and matches typed
-  words literally.
 
 ## v0.1.0 - 2026-10-21
 
