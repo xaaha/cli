@@ -11,7 +11,8 @@ import (
 // command. Nil writers use the defaults below; map entries you set win.
 type Config struct {
 	// FlagAliases maps a long flag name to its short form, shown together
-	// as "-h, --help". Starts with help->h and version->v.
+	// as "-h, --help". Starts with help->h and version->v. The help entry
+	// must be empty or a plain flag name, or Execute and the writers fail.
 	FlagAliases map[string]string
 	// HiddenFlags are left out of help and completion; an entry set to false
 	// shows a flag. Unless listed, the help flags added when the tree is

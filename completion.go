@@ -30,7 +30,8 @@ type Completer struct {
 }
 
 // WriteZshCompletion writes a zsh completion script for the tree under root.
-// It links the tree first, as Execute does.
+// It links the tree first, as Execute does, and fails on an invalid Config or
+// a tree it cannot script.
 func WriteZshCompletion(out io.Writer, root *Command) error {
 	w := &errWriter{w: out}
 	if err := root.link(); err != nil {
@@ -67,7 +68,8 @@ func WriteZshCompletion(out io.Writer, root *Command) error {
 }
 
 // WriteBashCompletion writes a bash completion script for the tree under root.
-// It links the tree first, as Execute does.
+// It links the tree first, as Execute does, and fails on an invalid Config or
+// a tree it cannot script.
 // Bash keeps one tree-wide list of flags that take a value, so a flag name
 // that is a bool in one command and takes a value in another is treated as
 // taking a value everywhere.
